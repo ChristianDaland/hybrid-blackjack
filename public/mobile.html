@@ -82,7 +82,7 @@
   <div id="game-view" class="card-panel" style="display: none;">
     <h2 id="display-name">Spiller</h2>
     <div id="game-chips" class="chips">Saldo: 500 kr</div>
-    <p id="my-bet-display" style="color: #facc15;">Bud: 0 kr</p>
+    <p id="my-bet-display" style="color: #facc15; font-size: 1.2rem; font-weight: bold; margin: 10px 0;">Bud: 0 kr</p>
 
     <div id="my-cards" class="cards-container"></div>
     <h3 id="hand-score">Håndverdi: 0</h3>
@@ -97,7 +97,8 @@
     const socket = io();
 
     function joinGame() {
-      const name = document.getElementById('player-name').value.trim();
+      const nameInput = document.getElementById('player-name');
+      const name = nameInput ? nameInput.value.trim() : '';
       if (name) {
         socket.emit('join_game', { name });
         document.getElementById('display-name').innerText = name;
@@ -105,29 +106,30 @@
     }
 
     function placeBet() {
-      const amount = document.getElementById('bet-amount').value;
-      socket.emit('place_bet', { amount });
+      const amountInput = document.getElementById('bet-amount');
+      const val = parseInt(amountInput.value, 10);
+      if (!isNaN(val) && val > 0) {
+        socket.emit('place_bet', { amount: val });
+      }
     }
 
     function hit() { socket.emit('player_hit'); }
     function stand() { socket.emit('player_stand'); }
 
     socket.on('player_state', (data) => {
-      // Skjul innloggingsskjermen når vi har koblet til
       document.getElementById('login-view').style.display = 'none';
 
-      // Oppdater saldoer og bud
       document.getElementById('bet-chips').innerText = `Saldo: ${data.chips} kr`;
       document.getElementById('game-chips').innerText = `Saldo: ${data.chips} kr`;
       document.getElementById('my-bet-display').innerText = `Bud: ${data.bet} kr`;
 
-      // Vis budskjermen dersom spilleren IKKE har lagt bud ennå (både under WAITING og BETTING)
-      if (!data.hasBet && (data.gameStatus === 'WAITING' || data.gameStatus === 'BETTING')) {
-        document.getElementById('bet-view').style.display = 'block';
-        document.getElementById('game-view').style.display = 'none';
-      } else {
+      // Dersom spilleren har lagt bud (hasBet === true), skjuler vi bud-panelet og viser spillet
+      if (data.hasBet) {
         document.getElementById('bet-view').style.display = 'none';
         document.getElementById('game-view').style.display = 'block';
+      } else {
+        document.getElementById('bet-view').style.display = 'block';
+        document.getElementById('game-view').style.display = 'none';
       }
 
       // Oppdater kortvisning

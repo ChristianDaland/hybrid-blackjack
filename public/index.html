@@ -8,8 +8,6 @@
   <meta http-equiv="Expires" content="0">
   <title>Blackjack - Bordskjerm</title>
   <script src="/socket.io/socket.io.js"></script>
-  <!-- QR-kode bibliotek -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -34,13 +32,17 @@
     .qr-box {
       background: white;
       color: #000;
-      padding: 10px;
+      padding: 10px 15px;
       border-radius: 12px;
       display: flex;
       align-items: center;
       gap: 12px;
     }
-    #qrcode { width: 64px; height: 64px; }
+    .qr-box img {
+      width: 70px;
+      height: 70px;
+      border-radius: 4px;
+    }
     .dealer-area {
       text-align: center;
       margin-top: 10px;
@@ -104,7 +106,6 @@
     .btn-start { background-color: #2563eb; color: white; }
     .btn-reset { background-color: #475569; color: white; }
     
-    /* Winner Popup */
     .modal {
       display: none;
       position: fixed;
@@ -137,26 +138,22 @@
         SKANN FOR Å BLI MED:<br>
         <span id="mobile-url-text" style="color: #2563eb;"></span>
       </div>
-      <div id="qrcode"></div>
+      <img id="qr-image" src="" alt="QR Kode">
     </div>
   </header>
 
-  <!-- Bankens (Dealer) Område -->
   <div class="dealer-area">
     <h2>BANKEN (DEALER) — POENG: <span id="dealer-score">0</span></h2>
     <div id="dealer-cards" class="cards-container"></div>
   </div>
 
-  <!-- Spillere Område -->
   <div id="players-container" class="players-area"></div>
 
-  <!-- Kontroller nederst -->
   <div class="footer-controls">
     <button class="btn-start" onclick="startGame()">Start Ny Runde</button>
     <button class="btn-reset" onclick="resetGame()">Nullstill Bord</button>
   </div>
 
-  <!-- Resultat pop-up -->
   <div id="result-modal" class="modal">
     <div class="modal-content">
       <h2 style="color: #facc15; font-size: 2rem; margin-bottom: 15px;">RUNDEN ER FULLFØRT</h2>
@@ -168,15 +165,10 @@
   <script>
     const socket = io({ transports: ['websocket'] });
 
-    // Generer QR-kode dynamisk basert på nåværende domene
+    // Sett opp QR-kode med bilde-API som tåler alt
     const mobileUrl = `${window.location.origin}/mobile`;
     document.getElementById('mobile-url-text').innerText = mobileUrl.replace('https://', '');
-    
-    new QRCode(document.getElementById("qrcode"), {
-      text: mobileUrl,
-      width: 64,
-      height: 64
-    });
+    document.getElementById('qr-image').src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(mobileUrl)}`;
 
     function startGame() {
       document.getElementById('result-modal').style.display = 'none';
@@ -202,12 +194,10 @@
     }
 
     socket.on('game_state', (data) => {
-      // Oppdater dealer
       document.getElementById('dealer-score').innerText = data.dealerScore;
       const dealerContainer = document.getElementById('dealer-cards');
       dealerContainer.innerHTML = data.dealerHand.map(renderCard).join('');
 
-      // Oppdater spillere
       const playersContainer = document.getElementById('players-container');
       playersContainer.innerHTML = '';
 
@@ -231,7 +221,6 @@
         playersContainer.appendChild(pDiv);
       });
 
-      // Vis resultater når spillet er ferdig
       if (data.gameStatus === 'GAME_OVER') {
         const modal = document.getElementById('result-modal');
         const resultText = document.getElementById('result-text');

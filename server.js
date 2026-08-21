@@ -15,7 +15,7 @@ app.get('/mobile', (req, res) => res.sendFile(path.join(__dirname, 'public', 'mo
 let players = [];
 let deck = [];
 let dealerHand = [];
-let gameStatus = 'WAITING';
+let gameStatus = 'WAITING'; // WAITING, BETTING, PLAYING, GAME_OVER
 let currentTurnIndex = 0;
 
 function createDeck() {
@@ -48,7 +48,7 @@ function calculateHand(hand) {
       aces += 1;
       score += 11;
     } else {
-      score += parseInt(card.value);
+      score += parseInt(card.value, 10);
     }
   }
   while (score > 21 && aces > 0) {
@@ -63,6 +63,7 @@ function broadcastState() {
     ? calculateHand(dealerHand) 
     : (dealerHand.length > 0 ? calculateHand([dealerHand[0]]) : 0);
 
+  // Send til storskjerm
   io.emit('game_state', {
     gameStatus,
     dealerHand,
@@ -79,6 +80,7 @@ function broadcastState() {
     }))
   });
 
+  // Send til hver enkelt mobil
   players.forEach((p, index) => {
     io.to(p.id).emit('player_state', {
       gameStatus,
@@ -93,6 +95,8 @@ function broadcastState() {
 }
 
 io.on('connection', (socket) => {
+
+  // Spiller blir med
   socket.on('join_game', (data) => {
     let player = players.find(p => p.id === socket.id);
     if (!player) {
@@ -110,6 +114,7 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
+  // Start ny hånd fra storskjerm
   socket.on('start_new_hand', () => {
     deck = shuffle(createDeck());
     dealerHand = [];
@@ -126,6 +131,7 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
+  // Nullstill bord
   socket.on('reset_game', () => {
     players = [];
     dealerHand = [];
@@ -133,19 +139,22 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
+  // Plasser bud fra mobil (tillates uansett om status er WAITING eller BETTING)
   socket.on('place_bet', (data) => {
     const player = players.find(p => p.id === socket.id);
     if (!player) return;
 
-    let betAmount = parseInt(data.amount) || 50;
+    let betAmount = parseInt(data.amount, 10) || 50;
     if (betAmount > player.chips) betAmount = player.chips;
 
     player.bet = betAmount;
     player.chips -= betAmount;
     player.hasBet = true;
 
+    // Hvis alle spillere har lagt inn bud, del ut kort og start spillet
     const allBet = players.length > 0 && players.every(p => p.hasBet);
     if (allBet) {
+      if (deck.length < 10) deck = shuffle(createDeck());
       gameStatus = 'PLAYING';
       players.forEach(p => {
         p.hand = [deck.pop(), deck.pop()];
@@ -154,7 +163,7 @@ io.on('connection', (socket) => {
       dealerHand = [deck.pop(), deck.pop()];
       currentTurnIndex = 0;
     }
-    
+
     broadcastState();
   });
 

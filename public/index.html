@@ -9,85 +9,77 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background-color: #064e3b;
-      color: #ffffff;
-      height: 100vh;
+      background-color: #059669;
+      color: white;
+      min-height: 100vh;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
-      padding: 20px;
-      overflow: hidden;
     }
     header {
+      background-color: #064e3b;
+      padding: 15px 30px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background: rgba(0,0,0,0.2);
-      padding: 15px 25px;
-      border-radius: 12px;
     }
     .qr-box {
       background: white;
-      color: #000;
+      color: #064e3b;
       padding: 10px 15px;
-      border-radius: 12px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .qr-box img { width: 70px; height: 70px; border-radius: 4px; }
-    .dealer-area { text-align: center; margin-top: 10px; }
-    .players-area { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; }
-    .player-card {
-      background: rgba(0,0,0,0.3);
-      border: 2px solid transparent;
-      border-radius: 16px;
-      padding: 15px;
-      min-width: 180px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: bold;
       text-align: center;
-      transition: all 0.3s ease;
     }
-    .player-card.active {
-      border-color: #facc15;
-      box-shadow: 0 0 20px rgba(250, 204, 21, 0.5);
-      background: rgba(0,0,0,0.5);
-    }
-    .cards-container { display: flex; gap: 8px; justify-content: center; margin: 10px 0; min-height: 90px; }
-    .card {
-      background: white;
-      color: #0f172a;
-      width: 55px;
-      height: 80px;
-      border-radius: 6px;
+    main {
+      flex: 1;
       display: flex;
       flex-direction: column;
+      align-items: center;
       justify-content: space-between;
-      padding: 5px;
-      font-weight: bold;
-      font-size: 1.1rem;
-      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+      padding: 30px;
     }
-    .red { color: #dc2626; }
-    .footer-controls { display: flex; justify-content: center; gap: 15px; }
-    button {
-      padding: 14px 28px;
-      border-radius: 10px;
-      border: none;
+    .dealer-area { text-align: center; font-size: 1.5rem; font-weight: bold; }
+    .players-area { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; width: 100%; }
+    .player-card {
+      background-color: #065f46;
+      border: 2px solid #34d399;
+      border-radius: 12px;
+      padding: 20px;
+      width: 220px;
+      text-align: center;
+    }
+    .active-turn { border-color: #facc15; box-shadow: 0 0 15px #facc15; }
+    .status-badge {
+      display: inline-block;
+      background: #facc15;
+      color: black;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 0.85rem;
       font-weight: bold;
-      font-size: 1.1rem;
+      margin-top: 5px;
+    }
+    .controls-bar {
+      display: flex;
+      gap: 15px;
+      margin-top: 20px;
+    }
+    button {
+      padding: 12px 24px;
+      border-radius: 8px;
+      border: none;
+      font-size: 1rem;
+      font-weight: bold;
       cursor: pointer;
     }
     .btn-start { background-color: #2563eb; color: white; }
-    .btn-reset { background-color: #475569; color: white; }
-    .bet-tag {
-      background: #facc15;
-      color: #000;
-      padding: 2px 8px;
-      border-radius: 10px;
+    .btn-reset { background-color: #64748b; color: white; }
+    .cards { display: flex; gap: 6px; justify-content: center; margin-top: 10px; }
+    .card-small {
+      background: white; color: black; width: 40px; height: 60px;
+      border-radius: 4px; display: flex; align-items: center; justify-content: center;
       font-weight: bold;
-      font-size: 0.9rem;
-      display: inline-block;
-      margin-top: 4px;
     }
   </style>
 </head>
@@ -95,73 +87,69 @@
 
   <header>
     <div>
-      <h1 style="color: #facc15;">BLACKJACK</h1>
-      <p style="color: #94a3b8;">Bordskjerm (Banken)</p>
+      <h1 style="font-size: 1.8rem;">BLACKJACK</h1>
+      <p style="opacity: 0.8;">Bordskjerm (Banken)</p>
     </div>
     <div class="qr-box">
-      <div style="text-align: right; font-size: 0.8rem; font-weight: bold;">
-        SKANN FOR Å BLI MED:<br>
-        <span id="mobile-url-text" style="color: #2563eb;"></span>
-      </div>
-      <img id="qr-image" src="" alt="QR Kode">
+      SKANN FOR Å BLI MED:<br>
+      <span style="font-size: 0.8rem; font-weight: normal;">hybrid-blackjack.onrender.com/mobile</span>
     </div>
   </header>
 
-  <div class="dealer-area">
-    <h2>BANKEN (DEALER) — POENG: <span id="dealer-score">0</span></h2>
-    <div id="dealer-cards" class="cards-container"></div>
-  </div>
+  <main>
+    <div class="dealer-area">
+      <h2>BANKEN (DEALER) — POENG: <span id="dealer-score">0</span></h2>
+      <div id="dealer-cards" class="cards"></div>
+    </div>
 
-  <div id="players-container" class="players-area"></div>
+    <div id="players-list" class="players-area"></div>
 
-  <div class="footer-controls">
-    <button class="btn-start" onclick="startGame()">Start Ny Hånd</button>
-    <button class="btn-reset" onclick="resetGame()">Nullstill Bord</button>
-  </div>
+    <div class="controls-bar">
+      <button class="btn-start" onclick="startNewHand()">Start Ny Hånd</button>
+      <button class="btn-reset" onclick="resetGame()">Nullstill Bord</button>
+    </div>
+  </main>
 
   <script>
-    const socket = io({ transports: ['websocket'] });
+    const socket = io();
 
-    const mobileUrl = `${window.location.origin}/mobile`;
-    document.getElementById('mobile-url-text').innerText = mobileUrl.replace('https://', '');
-    document.getElementById('qr-image').src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(mobileUrl)}`;
+    function startNewHand() {
+      socket.emit('start_new_hand');
+    }
 
-    function startGame() { socket.emit('start_game'); }
-    function resetGame() { socket.emit('reset_game'); }
-
-    function renderCard(card) {
-      if (card.value === '?') {
-        return `<div class="card" style="background:#1e293b; color:white; justify-content:center; align-items:center;">?</div>`;
-      }
-      const isRed = card.suit === '♥' || card.suit === '♦';
-      return `
-        <div class="card ${isRed ? 'red' : ''}">
-          <div>${card.value}</div>
-          <div style="text-align:right;">${card.suit}</div>
-        </div>
-      `;
+    function resetGame() {
+      socket.emit('reset_game');
     }
 
     socket.on('game_state', (data) => {
-      document.getElementById('dealer-score').innerText = data.dealerScore;
-      document.getElementById('dealer-cards').innerHTML = data.dealerHand.map(renderCard).join('');
+      document.getElementById('dealer-score').innerText = data.dealerScore || 0;
 
-      const playersContainer = document.getElementById('players-container');
-      playersContainer.innerHTML = '';
+      const dealerCards = document.getElementById('dealer-cards');
+      dealerCards.innerHTML = '';
+      if (data.dealerHand) {
+        data.dealerHand.forEach(card => {
+          const div = document.createElement('div');
+          div.className = 'card-small';
+          div.innerText = `${card.value}${card.suit}`;
+          dealerCards.appendChild(div);
+        });
+      }
+
+      const playersList = document.getElementById('players-list');
+      playersList.innerHTML = '';
 
       data.players.forEach(p => {
-        const pDiv = document.createElement('div');
-        pDiv.className = `player-card ${p.isCurrentTurn ? 'active' : ''}`;
+        const card = document.createElement('div');
+        card.className = `player-card ${p.isCurrentTurn ? 'active-turn' : ''}`;
         
-        let betStatus = p.hasBet ? `${p.bet} kr` : 'Venter på bud...';
+        let statusText = p.hasBet ? `Bud: ${p.bet} kr` : 'Venter på bud...';
 
-        pDiv.innerHTML = `
-          <h3 style="font-size: 1.2rem;">${p.name}</h3>
-          <div><span class="bet-tag">Bud: ${betStatus}</span></div>
-          <div class="cards-container">${p.hand.map(renderCard).join('')}</div>
-          <p style="font-weight: bold;">Poeng: ${p.score}</p>
+        card.innerHTML = `
+          <h3>${p.name}</h3>
+          <div class="status-badge">${statusText}</div>
+          <p style="margin-top: 15px;">Poeng: ${p.score}</p>
         `;
-        playersContainer.appendChild(pDiv);
+        playersList.appendChild(card);
       });
     });
   </script>

@@ -113,13 +113,16 @@
     function stand() { socket.emit('player_stand'); }
 
     socket.on('player_state', (data) => {
+      // Skjul innloggingsskjermen når vi har koblet til
       document.getElementById('login-view').style.display = 'none';
 
+      // Oppdater saldoer og bud
       document.getElementById('bet-chips').innerText = `Saldo: ${data.chips} kr`;
       document.getElementById('game-chips').innerText = `Saldo: ${data.chips} kr`;
+      document.getElementById('my-bet-display').innerText = `Bud: ${data.bet} kr`;
 
-      // Skjul eller vis budskjerm direkte basert på om spilleren har lagt bud
-      if (data.gameStatus === 'BETTING' && !data.hasBet) {
+      // Vis budskjermen dersom spilleren IKKE har lagt bud ennå (både under WAITING og BETTING)
+      if (!data.hasBet && (data.gameStatus === 'WAITING' || data.gameStatus === 'BETTING')) {
         document.getElementById('bet-view').style.display = 'block';
         document.getElementById('game-view').style.display = 'none';
       } else {
@@ -127,8 +130,7 @@
         document.getElementById('game-view').style.display = 'block';
       }
 
-      document.getElementById('my-bet-display').innerText = `Bud: ${data.bet} kr`;
-
+      // Oppdater kortvisning
       const cardsContainer = document.getElementById('my-cards');
       cardsContainer.innerHTML = '';
       if (data.hand && data.hand.length > 0) {

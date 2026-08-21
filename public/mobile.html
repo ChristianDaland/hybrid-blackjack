@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Blackjack - Mobil Spiller</title>
   <script src="/socket.io/socket.io.js"></script>
   <style>
@@ -121,7 +124,10 @@
   </div>
 
   <script>
-    const socket = io();
+    // Tvinger ren og uavbrutt WebSocket-forbindelse uten forsinkelser
+    const socket = io({
+      transports: ['websocket']
+    });
 
     function joinGame() {
       const name = document.getElementById('player-name').value.trim();
@@ -142,7 +148,7 @@
     }
 
     socket.on('player_state', (data) => {
-      // Viser kortene helt åpne
+      // Tegner opp kortene direkte helt åpne
       const cardsContainer = document.getElementById('my-cards');
       cardsContainer.innerHTML = '';
 
@@ -162,7 +168,7 @@
       const turnBadge = document.getElementById('turn-badge');
       const controls = document.getElementById('controls');
 
-      if (data.myTurn && data.status === 'PLAYING') {
+      if (data.myTurn && data.gameStatus === 'PLAYING') {
         turnBadge.style.display = 'inline-block';
         controls.style.display = 'flex';
       } else {

@@ -1,72 +1,64 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
+
+// Socket.IO med aktivert WebSocket og CORS
 const io = new Server(server, {
-  cors: { origin: "*" }
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  },
+  transports: ['websocket', 'polling']
 });
 
-const path = require('path');
+// Tvinger mobiler/nettlesere til ALDRI å lagre gamle filer (fjerner "Trykk og hold"-cache)
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
 
-// Server statiske filer fra /public
+// Server statiske filer fra public-mappen
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Hovedskjerm for iPad / PC
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+// Spilltilstand
+let players = []; // { id, name, hand: [], score: 0, status: 'WAITING' | 'PLAYING' | 'BUST' | 'STAND' }
+let dealerHand = [];
+let deck = [];
+let currentTurnIndex = -1;
+let gameStatus = 'WAITING'; // WAITING, PLAYING, DEALER_TURN, GAME_OVER
 
-// Spillere på mobil
-app.get('/mobile', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'mobile.html'));
-});
-
-// Global tilstand for spillet
-let gameState = {
-  phase: 'WAITING', // WAITING, PLAYING, DEALER_TURN, SHOWDOWN
-  deck: [],
-  dealerHand: [],
-  players: [], // Array med { id, name, hand, status: 'PLAYING'|'BUST'|'STAND', score }
-  currentTurnIndex: 0,
-  winnerInfo: null
-};
-
-// Generer og stokker en standard 52-korts kortstokk
+// Kortstokk-funksjoner
 function createDeck() {
   const suits = ['♠', '♥', '♦', '♣'];
   const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
-  let deck = [];
-
+  const newDeck = [];
   for (let suit of suits) {
     for (let value of values) {
-      deck.push({ suit, value });
+      newDeck.push({ suit, value });
     }
   }
-
-  // Fisher-Yates-stokking
-  for (let i = deck.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [deck[i], deck[j]] = [deck[j], deck[i]];
-  }
-
-  return deck;
+  return newDeck.sort(() => Math.random() - 0.5);
 }
 
-// Beregner den optimale poengsummen for en hånd
-function calculateHandScore(hand) {
+function calculateScore(hand) {
   let score = 0;
   let aces = 0;
 
   for (let card of hand) {
-    if (card.value === 'A') {
+    if (card.value === '?') continue;
+    if (['J', 'Q', 'K'].includes(card.value)) {
+      score += 10;
+    } else if (card.value === 'A') {
       aces += 1;
       score += 11;
-    } else if (['K', 'Q', 'J'].includes(card.value)) {
-      score += 10;
     } else {
-      score += parseInt(card.value, 10);
+      score += parseInt(card.value);
     }
   }
 
@@ -78,215 +70,143 @@ function calculateHandScore(hand) {
   return score;
 }
 
-// Sender oppdatert offentlig tilstand til iPad (Bordskjerm)
+// Sender oppdatert tilstand til alle
 function broadcastState() {
-  // Tilpasset dealer-hånd under aktivt spill (skjul kort nr. 2 for spillerne)
-  let visibleDealerHand = [...gameState.dealerHand];
-  if (gameState.phase === 'PLAYING' && visibleDealerHand.length > 1) {
-    visibleDealerHand = [visibleDealerHand[0], { suit: '?', value: '?' }];
+  // Til Bordskjerm (iPad)
+  let visibleDealerHand = [...dealerHand];
+  if (gameStatus === 'PLAYING' && dealerHand.length > 1) {
+    visibleDealerHand = [dealerHand[0], { suit: '?', value: '?' }];
   }
 
-  const publicState = {
-    phase: gameState.phase,
-    dealerHand: visibleDealerHand,
-    dealerScore: gameState.phase === 'PLAYING' ? calculateHandScore([visibleDealerHand[0]]) : calculateHandScore(gameState.dealerHand),
-    players: gameState.players.map(p => ({
+  io.emit('game_state', {
+    players: players.map((p, idx) => ({
       id: p.id,
       name: p.name,
       hand: p.hand,
       score: p.score,
-      status: p.status
+      status: p.status,
+      isCurrentTurn: idx === currentTurnIndex && gameStatus === 'PLAYING'
     })),
-    currentTurnPlayerId: gameState.players[gameState.currentTurnIndex]?.id || null,
-    winnerInfo: gameState.winnerInfo
-  };
+    dealerHand: visibleDealerHand,
+    dealerScore: gameStatus === 'PLAYING' ? calculateScore([dealerHand[0]]) : calculateScore(dealerHand),
+    gameStatus,
+    currentTurnPlayer: currentTurnIndex >= 0 && players[currentTurnIndex] ? players[currentTurnIndex].name : null
+  });
 
-  io.emit('state_update', publicState);
-}
-
-// Sender individuelt privat-state til mobilklienter
-function sendPlayerStates() {
-  gameState.players.forEach(player => {
-    io.to(player.id).emit('player_state', {
-      myTurn: gameState.phase === 'PLAYING' && gameState.players[gameState.currentTurnIndex]?.id === player.id,
-      hand: player.hand,
-      score: player.score,
-      status: player.status,
-      phase: gameState.phase
+  // Til hver enkelt mobil
+  players.forEach((p, idx) => {
+    io.to(p.id).emit('player_state', {
+      hand: p.hand,
+      score: p.score,
+      status: p.status,
+      myTurn: idx === currentTurnIndex && gameStatus === 'PLAYING',
+      gameStatus
     });
   });
 }
 
-// Sjekker om turen skal gå videre til neste spiller eller til dealeren
-function advanceTurn() {
-  let allDone = true;
-
-  for (let i = 0; i < gameState.players.length; i++) {
-    if (gameState.players[i].status === 'PLAYING') {
-      gameState.currentTurnIndex = i;
-      allDone = false;
-      break;
-    }
-  }
-
-  if (allDone) {
-    runDealerTurn();
+function nextTurn() {
+  currentTurnIndex++;
+  if (currentTurnIndex >= players.length) {
+    // Alle spillere ferdige -> Dealer sin tur
+    playDealerTurn();
   } else {
+    players[currentTurnIndex].status = 'PLAYING';
     broadcastState();
-    sendPlayerStates();
   }
 }
 
-// Automatisk dealer-sekvens (Banken trekker til 17 eller mer)
-function runDealerTurn() {
-  gameState.phase = 'DEALER_TURN';
+async function playDealerTurn() {
+  gameStatus = 'DEALER_TURN';
   broadcastState();
 
-  const dealerInterval = setInterval(() => {
-    let score = calculateHandScore(gameState.dealerHand);
+  // Trekk for dealer med 1.2 sek forsinkelse per kort
+  while (calculateScore(dealerHand) < 17) {
+    await new Promise(r => setTimeout(r, 1200));
+    dealerHand.push(deck.pop());
+    broadcastState();
+  }
 
-    if (score < 17) {
-      gameState.dealerHand.push(gameState.deck.pop());
-      broadcastState();
-    } else {
-      clearInterval(dealerInterval);
-      evaluateShowdown();
-    }
-  }, 1200); // 1.2 sekunder forsinkelse per kort for å skape spenning på iPad-skjermen
-}
-
-// Evaluering av vinnere mot banken
-function evaluateShowdown() {
-  gameState.phase = 'SHOWDOWN';
-  const dealerScore = calculateHandScore(gameState.dealerHand);
-  const dealerBust = dealerScore > 21;
-
-  let results = [];
-
-  gameState.players.forEach(p => {
-    if (p.status === 'BUST') {
-      results.push(`${p.name}: Gikk bust (Tap)`);
-    } else if (dealerBust) {
-      results.push(`${p.name}: Vant! (Banken gikk bust)`);
-    } else if (p.score > dealerScore) {
-      results.push(`${p.name}: Vant! (${p.score} vs ${dealerScore})`);
-    } else if (p.score < dealerScore) {
-      results.push(`${p.name}: Tapte (${p.score} vs ${dealerScore})`);
-    } else {
-      results.push(`${p.name}: Uavgjort / Push (${p.score})`);
-    }
-  });
-
-  gameState.winnerInfo = {
-    dealerScore: dealerScore,
-    dealerBust: dealerBust,
-    results: results
-  };
-
+  gameStatus = 'GAME_OVER';
   broadcastState();
-  sendPlayerStates();
 }
 
-// Socket.IO Kommunikasjon
 io.on('connection', (socket) => {
-  console.log(`Ny tilkobling: ${socket.id}`);
+  console.log('Ny tilkobling:', socket.id);
 
   // Registrer spiller fra mobil
-  socket.on('join_game', (data) => {
-    const existing = gameState.players.find(p => p.id === socket.id);
-    if (!existing) {
-      gameState.players.push({
+  socket.on('join_game', ({ name }) => {
+    if (!players.find(p => p.id === socket.id)) {
+      players.push({
         id: socket.id,
-        name: data.name || `Spiller ${gameState.players.length + 1}`,
+        name: name || `Spiller ${players.length + 1}`,
         hand: [],
         score: 0,
-        status: 'PLAYING'
+        status: 'WAITING'
       });
     }
     broadcastState();
-    sendPlayerStates();
   });
 
-  // Start ny hånd fra iPad eller mobil
-  socket.on('start_new_hand', () => {
-    if (gameState.players.length === 0) return;
+  // Start nytt spill fra iPad
+  socket.on('start_game', () => {
+    if (players.length === 0) return;
 
-    gameState.deck = createDeck();
-    gameState.dealerHand = [];
-    gameState.winnerInfo = null;
-    gameState.phase = 'PLAYING';
-    gameState.currentTurnIndex = 0;
+    deck = createDeck();
+    dealerHand = [deck.pop(), deck.pop()];
+    gameStatus = 'PLAYING';
 
-    // Tilbakestill spillere og del ut 2 startkort hver
-    gameState.players.forEach(player => {
-      player.hand = [gameState.deck.pop(), gameState.deck.pop()];
-      player.score = calculateHandScore(player.hand);
-      player.status = player.score === 21 ? 'STAND' : 'PLAYING';
+    players.forEach(p => {
+      p.hand = [deck.pop(), deck.pop()];
+      p.score = calculateScore(p.hand);
+      p.status = 'WAITING';
     });
 
-    // Del ut 2 kort til dealer (ett skjules automatisk under PLAYING)
-    gameState.dealerHand = [gameState.deck.pop(), gameState.deck.pop()];
-
-    advanceTurn();
+    currentTurnIndex = -1;
+    nextTurn();
   });
 
-  // Handling: Spiller trekker kort ("Hit")
+  // Trekk kort (Hit)
   socket.on('player_hit', () => {
-    const currentPlayer = gameState.players[gameState.currentTurnIndex];
-    if (!currentPlayer || currentPlayer.id !== socket.id || gameState.phase !== 'PLAYING') return;
+    const player = players[currentTurnIndex];
+    if (player && player.id === socket.id && gameStatus === 'PLAYING') {
+      player.hand.push(deck.pop());
+      player.score = calculateScore(player.hand);
 
-    currentPlayer.hand.push(gameState.deck.pop());
-    currentPlayer.score = calculateHandScore(currentPlayer.hand);
-
-    if (currentPlayer.score > 21) {
-      currentPlayer.status = 'BUST';
-      advanceTurn();
-    } else if (currentPlayer.score === 21) {
-      currentPlayer.status = 'STAND';
-      advanceTurn();
-    } else {
-      broadcastState();
-      sendPlayerStates();
+      if (player.score > 21) {
+        player.status = 'BUST';
+        nextTurn();
+      } else {
+        broadcastState();
+      }
     }
   });
 
-  // Handling: Spiller står ("Stand")
+  // Stå (Stand)
   socket.on('player_stand', () => {
-    const currentPlayer = gameState.players[gameState.currentTurnIndex];
-    if (!currentPlayer || currentPlayer.id !== socket.id || gameState.phase !== 'PLAYING') return;
-
-    currentPlayer.status = 'STAND';
-    advanceTurn();
-  });
-
-  // Tilbakestill/Nullstill rommet
-  socket.on('reset_game', () => {
-    gameState.phase = 'WAITING';
-    gameState.dealerHand = [];
-    gameState.winnerInfo = null;
-    gameState.players.forEach(p => {
-      p.hand = [];
-      p.score = 0;
-      p.status = 'PLAYING';
-    });
-    broadcastState();
-    sendPlayerStates();
-  });
-
-  // Håndter at spiller kobler fra
-  socket.on('disconnect', () => {
-    console.log(`Spiller koblet fra: ${socket.id}`);
-    gameState.players = gameState.players.filter(p => p.id !== socket.id);
-    if (gameState.phase === 'PLAYING') {
-      advanceTurn();
-    } else {
-      broadcastState();
-      sendPlayerStates();
+    const player = players[currentTurnIndex];
+    if (player && player.id === socket.id && gameStatus === 'PLAYING') {
+      player.status = 'STAND';
+      nextTurn();
     }
+  });
+
+  // Nullstill alt
+  socket.on('reset_game', () => {
+    players = [];
+    dealerHand = [];
+    gameStatus = 'WAITING';
+    currentTurnIndex = -1;
+    broadcastState();
+  });
+
+  socket.on('disconnect', () => {
+    players = players.filter(p => p.id !== socket.id);
+    broadcastState();
   });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Blackjack-server kjører på port ${PORT}`);
+  console.log(`Server kjører på port ${PORT}`);
 });

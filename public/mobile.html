@@ -111,12 +111,13 @@
   </div>
 
   <script>
-    // Tving lynrask websocket-tilkobling
-    const socket = io({ transports: ['websocket'] });
+    const socket = io();
+    let myPlayerName = '';
 
     function joinGame() {
       const name = document.getElementById('player-name').value.trim();
       if (name) {
+        myPlayerName = name;
         socket.emit('join_game', { name });
         document.getElementById('login-view').style.display = 'none';
         document.getElementById('game-view').style.display = 'block';
@@ -127,16 +128,12 @@
     function hit() { socket.emit('player_hit'); }
     function stand() { socket.emit('player_stand'); }
 
-    // Lytt direkte på game_state slik at kortene oppdateres samtidig som bordskjermen
-    socket.on('game_state', (data) => {
-      const me = data.players.find(p => p.id === socket.id);
-      if (!me) return;
-
+    function updateUI(hand, score, isTurn, gameStatus) {
       const cardsContainer = document.getElementById('my-cards');
       cardsContainer.innerHTML = '';
 
-      if (me.hand && me.hand.length > 0) {
-        me.hand.forEach(card => {
+      if (hand && hand.length > 0) {
+        hand.forEach(card => {
           const isRed = card.suit === '♥' || card.suit === '♦';
           const cardDiv = document.createElement('div');
           cardDiv.className = `card ${isRed ? 'red' : ''}`;
@@ -145,17 +142,30 @@
         });
       }
 
-      document.getElementById('hand-score').innerText = `Håndverdi: ${me.score || 0}`;
+      document.getElementById('hand-score').innerText = `Håndverdi: ${score || 0}`;
 
       const turnBadge = document.getElementById('turn-badge');
       const controls = document.getElementById('controls');
 
-      if (me.isCurrentTurn && data.gameStatus === 'PLAYING') {
+      if (isTurn && (gameStatus === 'PLAYING' || !gameStatus)) {
         turnBadge.style.display = 'inline-block';
         controls.style.display = 'flex';
       } else {
         turnBadge.style.display = 'none';
         controls.style.display = 'none';
+      }
+    }
+
+    // 1. Direkte oppdatering for min spiller fra serveren
+    socket.on('player_state', (data) => {
+      updateUI(data.hand, data.score, data.myTurn, data.gameStatus);
+    });
+
+    // 2. Fellesoppdatering hvis player_state forsinkes
+    socket.on('game_state', (data) => {
+      const me = data.players.find(p => p.id === socket.id || p.name === myPlayerName);
+      if (me) {
+        updateUI(me.hand, me.score, me.isCurrentTurn, data.gameStatus);
       }
     });
   </script>

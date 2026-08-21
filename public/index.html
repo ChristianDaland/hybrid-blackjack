@@ -58,6 +58,13 @@
       position: relative;
     }
     .active-turn { border-color: #facc15; box-shadow: 0 0 15px #facc15; }
+    .player-chips {
+      color: #34d399;
+      font-weight: bold;
+      font-size: 0.95rem;
+      margin-top: 4px;
+      margin-bottom: 8px;
+    }
     .status-badge {
       display: inline-block;
       background: #facc15;
@@ -66,7 +73,6 @@
       border-radius: 6px;
       font-size: 0.85rem;
       font-weight: bold;
-      margin-top: 5px;
     }
     .result-badge {
       background: #ef4444;
@@ -183,6 +189,7 @@
 
         card.innerHTML = `
           <h3>${p.name}</h3>
+          <div class="player-chips">Saldo: ${p.chips} kr</div>
           <div class="status-badge">${statusText}</div>
           <div class="cards">${cardsHTML}</div>
           <p style="margin-top: 10px;">Poeng: ${p.score}</p>

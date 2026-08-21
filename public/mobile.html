@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Blackjack Mobil Spiller</title>
+  <title>Blackjack Mobil</title>
   <script src="/socket.io/socket.io.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -50,39 +50,12 @@
     .btn-bet { background-color: #facc15; color: #000; margin-top: 10px; }
     .btn-hit { background-color: #16a34a; color: white; }
     .btn-stand { background-color: #dc2626; color: white; }
-    
-    .badge {
-      background-color: #eab308;
-      color: #000;
-      padding: 6px 16px;
-      border-radius: 20px;
-      font-weight: bold;
-      font-size: 0.9rem;
-      display: inline-block;
-      margin-bottom: 15px;
-    }
-    
-    .cards-container {
-      display: flex;
-      gap: 10px;
-      justify-content: center;
-      margin: 15px 0;
-      flex-wrap: wrap;
-      min-height: 110px;
-    }
+    .chips { color: #4ade80; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; }
+    .cards-container { display: flex; gap: 10px; justify-content: center; margin: 15px 0; flex-wrap: wrap; }
     .card {
-      background: white;
-      color: #0f172a;
-      width: 70px;
-      height: 100px;
-      border-radius: 8px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      padding: 8px;
-      font-weight: bold;
-      font-size: 1.3rem;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      background: white; color: #0f172a; width: 70px; height: 100px;
+      border-radius: 8px; display: flex; flex-direction: column;
+      justify-content: space-between; padding: 8px; font-weight: bold; font-size: 1.3rem;
     }
     .red { color: #dc2626; }
     .controls { display: flex; gap: 10px; margin-top: 15px; }
@@ -99,36 +72,33 @@
 
   <!-- Budgivning -->
   <div id="bet-view" class="card-panel" style="display: none;">
-    <h2 style="margin-bottom: 10px;">Plasser ditt bud</h2>
-    <p style="color: #94a3b8; margin-bottom: 15px;">Hvor mye vil du satse?</p>
+    <h2>Plasser ditt bud</h2>
+    <div id="bet-chips" class="chips">Saldo: 500 kr</div>
     <input type="number" id="bet-amount" value="100" step="50" min="10">
     <button class="btn-bet" onclick="placeBet()">Bekreft Bud</button>
   </div>
 
   <!-- Spillskjerm -->
   <div id="game-view" class="card-panel" style="display: none;">
-    <h2 id="display-name" style="margin-bottom: 5px;">Spiller</h2>
-    <p id="my-bet-display" style="color: #facc15; margin-bottom: 10px;">Bud: 0 kr</p>
-    
-    <div id="turn-badge" class="badge" style="display: none;">Din Tur!</div>
+    <h2 id="display-name">Spiller</h2>
+    <div id="game-chips" class="chips">Saldo: 500 kr</div>
+    <p id="my-bet-display" style="color: #facc15;">Bud: 0 kr</p>
 
     <div id="my-cards" class="cards-container"></div>
     <h3 id="hand-score">Håndverdi: 0</h3>
 
     <div id="controls" class="controls" style="display: none;">
-      <button class="btn-hit" onclick="hit()">Trekk (Hit)</button>
-      <button class="btn-stand" onclick="stand()">Stå (Stand)</button>
+      <button class="btn-hit" onclick="hit()">Trekk</button>
+      <button class="btn-stand" onclick="stand()">Stå</button>
     </div>
   </div>
 
   <script>
     const socket = io();
-    let myName = '';
 
     function joinGame() {
       const name = document.getElementById('player-name').value.trim();
       if (name) {
-        myName = name;
         socket.emit('join_game', { name });
         document.getElementById('display-name').innerText = name;
       }
@@ -137,8 +107,6 @@
     function placeBet() {
       const amount = document.getElementById('bet-amount').value;
       socket.emit('place_bet', { amount });
-      document.getElementById('bet-view').style.display = 'none';
-      document.getElementById('game-view').style.display = 'block';
     }
 
     function hit() { socket.emit('player_hit'); }
@@ -147,25 +115,22 @@
     socket.on('player_state', (data) => {
       document.getElementById('login-view').style.display = 'none';
 
-      // 1. Vis budskjermen dersom runden krever bud og spilleren ikke har bydd ennå
+      document.getElementById('bet-chips').innerText = `Saldo: ${data.chips} kr`;
+      document.getElementById('game-chips').innerText = `Saldo: ${data.chips} kr`;
+
+      // Skjul eller vis budskjerm direkte basert på om spilleren har lagt bud
       if (data.gameStatus === 'BETTING' && !data.hasBet) {
-        document.getElementById('game-view').style.display = 'none';
         document.getElementById('bet-view').style.display = 'block';
-        return;
+        document.getElementById('game-view').style.display = 'none';
+      } else {
+        document.getElementById('bet-view').style.display = 'none';
+        document.getElementById('game-view').style.display = 'block';
       }
 
-      // 2. Vis spillskjermen
-      document.getElementById('bet-view').style.display = 'none';
-      document.getElementById('game-view').style.display = 'block';
+      document.getElementById('my-bet-display').innerText = `Bud: ${data.bet} kr`;
 
-      if (data.bet) {
-        document.getElementById('my-bet-display').innerText = `Bud: ${data.bet} kr`;
-      }
-
-      // Render kort
       const cardsContainer = document.getElementById('my-cards');
       cardsContainer.innerHTML = '';
-
       if (data.hand && data.hand.length > 0) {
         data.hand.forEach(card => {
           const isRed = card.suit === '♥' || card.suit === '♦';
@@ -177,17 +142,7 @@
       }
 
       document.getElementById('hand-score').innerText = `Håndverdi: ${data.score || 0}`;
-
-      const turnBadge = document.getElementById('turn-badge');
-      const controls = document.getElementById('controls');
-
-      if (data.myTurn && data.gameStatus === 'PLAYING') {
-        turnBadge.style.display = 'inline-block';
-        controls.style.display = 'flex';
-      } else {
-        turnBadge.style.display = 'none';
-        controls.style.display = 'none';
-      }
+      document.getElementById('controls').style.display = (data.myTurn && data.gameStatus === 'PLAYING') ? 'flex' : 'none';
     });
   </script>
 </body>

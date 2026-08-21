@@ -1,0 +1,13 @@
+{
+  "name": "hybrid-blackjack",
+  "version": "1.0.0",
+  "description": "Hybrid Blackjack spilt på iPad og mobil",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2"
+  }
+}

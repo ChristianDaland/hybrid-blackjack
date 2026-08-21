@@ -2,151 +2,210 @@
 <html lang="no">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Blackjack Mobil</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Blackjack Spiller</title>
   <script src="/socket.io/socket.io.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background-color: #0f172a;
-      color: #ffffff;
-      padding: 20px;
+      color: white;
+      min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      min-height: 100vh;
+      justify-content: center;
+      padding: 20px;
     }
-    .card-panel {
+    .card-box {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 24px;
       width: 100%;
       max-width: 360px;
-      background-color: #1e293b;
-      border-radius: 16px;
-      padding: 20px;
       text-align: center;
       box-shadow: 0 10px 25px rgba(0,0,0,0.5);
     }
-    input[type="number"], input[type="text"] {
+    input[type="text"], input[type="number"] {
       width: 100%;
-      padding: 16px;
-      border-radius: 12px;
+      padding: 14px;
+      border-radius: 10px;
       border: 1px solid #334155;
-      background-color: #0f172a;
+      background: #0f172a;
       color: white;
       font-size: 1.1rem;
-      margin-bottom: 16px;
+      margin-bottom: 15px;
       text-align: center;
     }
     button {
       width: 100%;
       padding: 16px;
-      border-radius: 12px;
+      border-radius: 10px;
       border: none;
       font-size: 1.1rem;
       font-weight: bold;
       cursor: pointer;
+      margin-bottom: 10px;
     }
-    .btn-join { background-color: #2563eb; color: white; }
-    .btn-bet { background-color: #facc15; color: #000; margin-top: 10px; }
-    .btn-hit { background-color: #16a34a; color: white; }
-    .btn-stand { background-color: #dc2626; color: white; }
-    .chips { color: #4ade80; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; }
-    .cards-container { display: flex; gap: 10px; justify-content: center; margin: 15px 0; flex-wrap: wrap; }
-    .card {
-      background: white; color: #0f172a; width: 70px; height: 100px;
-      border-radius: 8px; display: flex; flex-direction: column;
-      justify-content: space-between; padding: 8px; font-weight: bold; font-size: 1.3rem;
+    .btn-primary { background: #10b981; color: white; }
+    .btn-action { background: #3b82f6; color: white; }
+    .btn-stand { background: #ef4444; color: white; }
+    .chips { color: #34d399; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; }
+    .bet { color: #facc15; font-size: 1.1rem; font-weight: bold; margin-bottom: 15px; }
+    .action-group { display: flex; gap: 10px; margin-top: 15px; }
+    .action-group button { flex: 1; }
+    .cards { display: flex; gap: 8px; justify-content: center; margin: 15px 0; flex-wrap: wrap; }
+    .card-small {
+      background: white; color: black; width: 50px; height: 75px;
+      border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      font-weight: bold; font-size: 1.3rem;
     }
     .red { color: #dc2626; }
-    .controls { display: flex; gap: 10px; margin-top: 15px; }
+    .eliminated-box {
+      background: #450a0a;
+      border: 2px solid #ef4444;
+      border-radius: 16px;
+      padding: 30px 20px;
+      text-align: center;
+    }
+    .eliminated-box h2 {
+      color: #ef4444;
+      font-size: 2rem;
+      margin-bottom: 10px;
+    }
   </style>
 </head>
 <body>
 
-  <!-- Innlogging -->
-  <div id="login-view" class="card-panel">
-    <h2 style="margin-bottom: 15px;">Bli med i spillet</h2>
-    <input type="text" id="player-name" placeholder="Skriv navnet ditt">
-    <button class="btn-join" onclick="joinGame()">Bli med</button>
+  <!-- REGISTRERING -->
+  <div id="join-screen" class="card-box">
+    <h2 style="margin-bottom: 20px;">Bli med i spillet</h2>
+    <input type="text" id="player-name" placeholder="Ditt navn">
+    <button class="btn-primary" onclick="joinGame()">Start Spillet</button>
   </div>
 
-  <!-- Budgivning -->
-  <div id="bet-view" class="card-panel" style="display: none;">
-    <h2>Plasser ditt bud</h2>
-    <div id="bet-chips" class="chips">Saldo: 500 kr</div>
-    <input type="number" id="bet-amount" value="100" step="50" min="10">
-    <button class="btn-bet" onclick="placeBet()">Bekreft Bud</button>
-  </div>
-
-  <!-- Spillskjerm -->
-  <div id="game-view" class="card-panel" style="display: none;">
+  <!-- SPILLSKJERM -->
+  <div id="game-screen" class="card-box" style="display: none;">
     <h2 id="display-name">Spiller</h2>
-    <div id="game-chips" class="chips">Saldo: 500 kr</div>
-    <p id="my-bet-display" style="color: #facc15; font-size: 1.2rem; font-weight: bold; margin: 10px 0;">Bud: 0 kr</p>
+    <div class="chips">Saldo: <span id="display-chips">500</span> kr</div>
+    <div class="bet">Bud: <span id="display-bet">0</span> kr</div>
 
-    <div id="my-cards" class="cards-container"></div>
-    <h3 id="hand-score">Håndverdi: 0</h3>
-
-    <div id="controls" class="controls" style="display: none;">
-      <button class="btn-hit" onclick="hit()">Trekk</button>
-      <button class="btn-stand" onclick="stand()">Stå</button>
+    <!-- ELIMINERT SKJERM -->
+    <div id="eliminated-section" class="eliminated-box" style="display: none;">
+      <h2>DU ER UTE! ✕</h2>
+      <p style="color: #fca5a5; font-size: 1.1rem;">Du har brukt opp alle pengene dine og kan ikke spille videre denne runden.</p>
     </div>
+
+    <!-- BETTING PANEL -->
+    <div id="betting-section" style="display: none;">
+      <p style="margin-bottom: 10px;">Plasser ditt bud:</p>
+      <input type="number" id="bet-amount" value="50" min="10" step="10">
+      <button class="btn-primary" onclick="placeBet()">Sats penger</button>
+    </div>
+
+    <!-- SPILL PANEL -->
+    <div id="playing-section" style="display: none;">
+      <div id="cards-container" class="cards"></div>
+      <p style="font-size: 1.2rem; font-weight: bold; margin-bottom: 10px;">Håndverdi: <span id="display-score">0</span></p>
+
+      <div id="turn-actions" style="display: none;">
+        <div class="action-group">
+          <button class="btn-action" onclick="hit()">Trekk kort</button>
+          <button class="btn-stand" onclick="stand()">Stå</button>
+        </div>
+      </div>
+      <p id="wait-message" style="color: #94a3b8; font-style: italic; margin-top: 10px; display: none;">Venter på din tur...</p>
+    </div>
+
+    <p id="game-msg" style="margin-top: 15px; font-weight: bold; color: #facc15;"></p>
   </div>
 
   <script>
     const socket = io();
 
     function joinGame() {
-      const nameInput = document.getElementById('player-name');
-      const name = nameInput ? nameInput.value.trim() : '';
-      if (name) {
-        socket.emit('join_game', { name });
-        document.getElementById('display-name').innerText = name;
-      }
+      const name = document.getElementById('player-name').value.trim();
+      if (!name) return alert('Vennligst skriv inn navnet ditt.');
+      socket.emit('join_game', { name });
+      document.getElementById('join-screen').style.display = 'none';
+      document.getElementById('game-screen').style.display = 'block';
+      document.getElementById('display-name').innerText = name;
     }
 
     function placeBet() {
-      const amountInput = document.getElementById('bet-amount');
-      const val = parseInt(amountInput.value, 10);
-      if (!isNaN(val) && val > 0) {
-        socket.emit('place_bet', { amount: val });
-      }
+      const amount = document.getElementById('bet-amount').value;
+      socket.emit('place_bet', { amount });
     }
 
     function hit() { socket.emit('player_hit'); }
     function stand() { socket.emit('player_stand'); }
 
     socket.on('player_state', (data) => {
-      document.getElementById('login-view').style.display = 'none';
+      document.getElementById('display-chips').innerText = data.chips;
+      document.getElementById('display-bet').innerText = data.bet;
 
-      document.getElementById('bet-chips').innerText = `Saldo: ${data.chips} kr`;
-      document.getElementById('game-chips').innerText = `Saldo: ${data.chips} kr`;
-      document.getElementById('my-bet-display').innerText = `Bud: ${data.bet} kr`;
+      const bettingSec = document.getElementById('betting-section');
+      const playingSec = document.getElementById('playing-section');
+      const turnActions = document.getElementById('turn-actions');
+      const waitMsg = document.getElementById('wait-message');
+      const gameMsg = document.getElementById('game-msg');
+      const eliminatedSec = document.getElementById('eliminated-section');
 
-      // Dersom spilleren har lagt bud (hasBet === true), skjuler vi bud-panelet og viser spillet
-      if (data.hasBet) {
-        document.getElementById('bet-view').style.display = 'none';
-        document.getElementById('game-view').style.display = 'block';
+      // Hvis spilleren er slått ut (0 kr og 0 bud)
+      if (data.isEliminated) {
+        eliminatedSec.style.display = 'block';
+        bettingSec.style.display = 'none';
+        playingSec.style.display = 'none';
+        gameMsg.innerText = '';
+        return;
       } else {
-        document.getElementById('bet-view').style.display = 'block';
-        document.getElementById('game-view').style.display = 'none';
+        eliminatedSec.style.display = 'none';
       }
 
-      // Oppdater kortvisning
-      const cardsContainer = document.getElementById('my-cards');
-      cardsContainer.innerHTML = '';
-      if (data.hand && data.hand.length > 0) {
-        data.hand.forEach(card => {
-          const isRed = card.suit === '♥' || card.suit === '♦';
-          const cardDiv = document.createElement('div');
-          cardDiv.className = `card ${isRed ? 'red' : ''}`;
-          cardDiv.innerHTML = `<div>${card.value}</div><div style="text-align:right;">${card.suit}</div>`;
-          cardsContainer.appendChild(cardDiv);
-        });
-      }
+      if (data.gameStatus === 'BETTING') {
+        playingSec.style.display = 'none';
+        gameMsg.innerText = '';
+        if (!data.hasBet) {
+          bettingSec.style.display = 'block';
+        } else {
+          bettingSec.style.display = 'none';
+          gameMsg.innerText = 'Bud plassert! Venter på andre spillere...';
+        }
+      } else if (data.gameStatus === 'PLAYING' || data.gameStatus === 'GAME_OVER') {
+        bettingSec.style.display = 'none';
+        playingSec.style.display = 'block';
 
-      document.getElementById('hand-score').innerText = `Håndverdi: ${data.score || 0}`;
-      document.getElementById('controls').style.display = (data.myTurn && data.gameStatus === 'PLAYING') ? 'flex' : 'none';
+        const cardsContainer = document.getElementById('cards-container');
+        cardsContainer.innerHTML = '';
+        if (data.hand) {
+          data.hand.forEach(c => {
+            const isRed = c.suit === '♥' || c.suit === '♦';
+            const div = document.createElement('div');
+            div.className = `card-small ${isRed ? 'red' : ''}`;
+            div.innerText = `${c.value}${c.suit}`;
+            cardsContainer.appendChild(div);
+          });
+        }
+
+        document.getElementById('display-score').innerText = data.score;
+
+        if (data.gameStatus === 'PLAYING') {
+          if (data.myTurn) {
+            turnActions.style.display = 'block';
+            waitMsg.style.display = 'none';
+            gameMsg.innerText = 'Det er din tur!';
+          } else {
+            turnActions.style.display = 'none';
+            waitMsg.style.display = 'block';
+            gameMsg.innerText = '';
+          }
+        } else if (data.gameStatus === 'GAME_OVER') {
+          turnActions.style.display = 'none';
+          waitMsg.style.display = 'none';
+          gameMsg.innerText = data.resultText || 'Runden er ferdig!';
+        }
+      }
     });
   </script>
 </body>

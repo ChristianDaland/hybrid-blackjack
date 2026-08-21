@@ -56,6 +56,32 @@
       width: 240px;
       text-align: center;
       position: relative;
+      overflow: hidden;
+    }
+    .player-card.eliminated {
+      border-color: #ef4444;
+      opacity: 0.75;
+    }
+    .eliminated-cross {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.65);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #ef4444;
+      font-size: 5rem;
+      font-weight: 900;
+      z-index: 10;
+      line-height: 1;
+    }
+    .eliminated-text {
+      font-size: 1.2rem;
+      color: #ef4444;
+      font-weight: bold;
+      margin-top: 5px;
+      letter-spacing: 2px;
     }
     .active-turn { border-color: #facc15; box-shadow: 0 0 15px #facc15; }
     .player-chips {
@@ -169,12 +195,12 @@
 
       data.players.forEach(p => {
         const card = document.createElement('div');
-        card.className = `player-card ${p.isCurrentTurn ? 'active-turn' : ''}`;
+        card.className = `player-card ${p.isCurrentTurn ? 'active-turn' : ''} ${p.isEliminated ? 'eliminated' : ''}`;
         
         let statusText = p.hasBet ? `Bud: ${p.bet} kr` : 'Venter på bud...';
 
         let resultHTML = '';
-        if (p.resultText) {
+        if (p.resultText && !p.isEliminated) {
           const isWin = p.resultText.includes('VANT');
           resultHTML = `<div class="result-badge ${isWin ? 'win-badge' : ''}">${p.resultText}</div>`;
         }
@@ -187,7 +213,18 @@
           }).join('');
         }
 
+        let crossHTML = '';
+        if (p.isEliminated) {
+          crossHTML = `
+            <div class="eliminated-cross">
+              ✕
+              <div class="eliminated-text">SLÅTT UT</div>
+            </div>
+          `;
+        }
+
         card.innerHTML = `
+          ${crossHTML}
           <h3>${p.name}</h3>
           <div class="player-chips">Saldo: ${p.chips} kr</div>
           <div class="status-badge">${statusText}</div>

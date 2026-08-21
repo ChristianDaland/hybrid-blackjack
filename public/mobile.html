@@ -99,8 +99,8 @@
 
   <!-- Budgivning -->
   <div id="bet-view" class="card-panel" style="display: none;">
-    <h2>Plasser ditt bud</h2>
-    <p style="color: #94a3b8; margin: 10px 0;">Hvor mye vil du satse?</p>
+    <h2 style="margin-bottom: 10px;">Plasser ditt bud</h2>
+    <p style="color: #94a3b8; margin-bottom: 15px;">Hvor mye vil du satse?</p>
     <input type="number" id="bet-amount" value="100" step="50" min="10">
     <button class="btn-bet" onclick="placeBet()">Bekreft Bud</button>
   </div>
@@ -122,14 +122,14 @@
   </div>
 
   <script>
-    const socket = io({ transports: ['websocket'] });
+    const socket = io();
+    let hasPlacedBet = false;
 
     function joinGame() {
       const name = document.getElementById('player-name').value.trim();
       if (name) {
         socket.emit('join_game', { name });
         document.getElementById('login-view').style.display = 'none';
-        document.getElementById('game-view').style.display = 'block';
         document.getElementById('display-name').innerText = name;
       }
     }
@@ -137,6 +137,7 @@
     function placeBet() {
       const amount = document.getElementById('bet-amount').value;
       socket.emit('place_bet', { amount });
+      hasPlacedBet = true;
       document.getElementById('bet-view').style.display = 'none';
       document.getElementById('game-view').style.display = 'block';
     }
@@ -145,13 +146,18 @@
     function stand() { socket.emit('player_stand'); }
 
     socket.on('player_state', (data) => {
-      // Vis budskjerm dersom statusen er BETTING og vi ikke har lagt inn bud ennå
-      if (data.gameStatus === 'BETTING' && !data.hasBet) {
-        document.getElementById('bet-view').style.display = 'block';
-        document.getElementById('game-view').style.display = 'none';
-        return;
+      // Hvis nytt spill har startet (BETTING), nullstill bud-status
+      if (data.gameStatus === 'BETTING') {
+        if (!data.hasBet) {
+          hasPlacedBet = false;
+          document.getElementById('login-view').style.display = 'none';
+          document.getElementById('game-view').style.display = 'none';
+          document.getElementById('bet-view').style.display = 'block';
+          return;
+        }
       }
 
+      // Hvis vi har lagt inn bud eller spillet er i gang
       document.getElementById('bet-view').style.display = 'none';
       document.getElementById('game-view').style.display = 'block';
 
@@ -159,7 +165,7 @@
         document.getElementById('my-bet-display').innerText = `Bud: ${data.bet} kr`;
       }
 
-      // Render kortene umiddelbart
+      // Tegn kort
       const cardsContainer = document.getElementById('my-cards');
       cardsContainer.innerHTML = '';
 

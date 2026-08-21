@@ -8,8 +8,20 @@ const io = new Server(server, {
   cors: { origin: "*" }
 });
 
+const path = require('path');
+
 // Server statiske filer fra /public
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Hovedskjerm for iPad / PC
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Spillere på mobil
+app.get('/mobile', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'mobile.html'));
+});
 
 // Global tilstand for spillet
 let gameState = {

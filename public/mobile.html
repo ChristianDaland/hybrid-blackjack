@@ -49,15 +49,7 @@
     .btn-join { background-color: #2563eb; color: white; }
     .btn-hit { background-color: #16a34a; color: white; }
     .btn-stand { background-color: #dc2626; color: white; }
-    .btn-bet { background-color: #facc15; color: #000; font-size: 1.2rem; }
     
-    .bet-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-top: 15px;
-    }
-
     .badge {
       background-color: #eab308;
       color: #000;
@@ -107,37 +99,22 @@
   <!-- Spillskjerm -->
   <div id="game-view" class="card-panel" style="display: none;">
     <h2 id="display-name" style="margin-bottom: 10px;">Spiller</h2>
+    <div id="turn-badge" class="badge" style="display: none;">Din Tur!</div>
 
-    <!-- Budgiving Panel -->
-    <div id="betting-panel" style="display: none;">
-      <h3 style="color: #facc15; margin-bottom: 10px;">Plasser ditt bud:</h3>
-      <div class="bet-grid">
-        <button class="btn-bet" onclick="placeBet(10)">10 kr</button>
-        <button class="btn-bet" onclick="placeBet(50)">50 kr</button>
-        <button class="btn-bet" onclick="placeBet(100)">100 kr</button>
-        <button class="btn-bet" onclick="placeBet(250)">250 kr</button>
-      </div>
-    </div>
-
-    <!-- Vente på at andre byr -->
-    <div id="waiting-bets" style="display: none; color: #94a3b8; margin: 15px 0;">
-      <p>Bud plassert! Venter på andre spillere...</p>
-    </div>
-
-    <!-- Kort/Spillområde -->
-    <div id="play-panel" style="display: none;">
-      <div id="turn-badge" class="badge" style="display: none;">Din Tur!</div>
+    <!-- Kortene vises direkte i dette feltet -->
+    <div id="cards-wrapper">
       <div id="my-cards" class="cards-container"></div>
       <h3 id="hand-score">Håndverdi: 0</h3>
-      <div id="controls" class="controls" style="display: none;">
-        <button class="btn-hit" onclick="hit()">Trekk (Hit)</button>
-        <button class="btn-stand" onclick="stand()">Stå (Stand)</button>
-      </div>
+    </div>
+
+    <div id="controls" class="controls" style="display: none;">
+      <button class="btn-hit" onclick="hit()">Trekk (Hit)</button>
+      <button class="btn-stand" onclick="stand()">Stå (Stand)</button>
     </div>
   </div>
 
   <script>
-    const socket = io({ transports: ['websocket'] });
+    const socket = io();
 
     function joinGame() {
       const name = document.getElementById('player-name').value.trim();
@@ -149,56 +126,35 @@
       }
     }
 
-    function placeBet(amount) {
-      socket.emit('place_bet', { amount });
-    }
-
     function hit() { socket.emit('player_hit'); }
     function stand() { socket.emit('player_stand'); }
 
+    // Lytt på spilleroppdateringer fra versjon 2 serveren
     socket.on('player_state', (data) => {
-      const bettingPanel = document.getElementById('betting-panel');
-      const waitingBets = document.getElementById('waiting-bets');
-      const playPanel = document.getElementById('play-panel');
+      const cardsContainer = document.getElementById('my-cards');
+      cardsContainer.innerHTML = '';
 
-      if (data.gameStatus === 'BETTING') {
-        playPanel.style.display = 'none';
-        if (!data.hasBet) {
-          bettingPanel.style.display = 'block';
-          waitingBets.style.display = 'none';
-        } else {
-          bettingPanel.style.display = 'none';
-          waitingBets.style.display = 'block';
-        }
-      } else if (data.gameStatus === 'PLAYING') {
-        bettingPanel.style.display = 'none';
-        waitingBets.style.display = 'none';
-        playPanel.style.display = 'block';
+      if (data.hand && data.hand.length > 0) {
+        data.hand.forEach(card => {
+          const isRed = card.suit === '♥' || card.suit === '♦';
+          const cardDiv = document.createElement('div');
+          cardDiv.className = `card ${isRed ? 'red' : ''}`;
+          cardDiv.innerHTML = `<div>${card.value}</div><div style="text-align:right;">${card.suit}</div>`;
+          cardsContainer.appendChild(cardDiv);
+        });
+      }
 
-        const cardsContainer = document.getElementById('my-cards');
-        cardsContainer.innerHTML = '';
-        if (data.hand && data.hand.length > 0) {
-          data.hand.forEach(card => {
-            const isRed = card.suit === '♥' || card.suit === '♦';
-            const cardDiv = document.createElement('div');
-            cardDiv.className = `card ${isRed ? 'red' : ''}`;
-            cardDiv.innerHTML = `<div>${card.value}</div><div style="text-align:right;">${card.suit}</div>`;
-            cardsContainer.appendChild(cardDiv);
-          });
-        }
+      document.getElementById('hand-score').innerText = `Håndverdi: ${data.score || 0}`;
 
-        document.getElementById('hand-score').innerText = `Håndverdi: ${data.score || 0}`;
+      const turnBadge = document.getElementById('turn-badge');
+      const controls = document.getElementById('controls');
 
-        const turnBadge = document.getElementById('turn-badge');
-        const controls = document.getElementById('controls');
-
-        if (data.myTurn) {
-          turnBadge.style.display = 'inline-block';
-          controls.style.display = 'flex';
-        } else {
-          turnBadge.style.display = 'none';
-          controls.style.display = 'none';
-        }
+      if (data.myTurn && data.gameStatus === 'PLAYING') {
+        turnBadge.style.display = 'inline-block';
+        controls.style.display = 'flex';
+      } else {
+        turnBadge.style.display = 'none';
+        controls.style.display = 'none';
       }
     });
   </script>

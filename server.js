@@ -14,7 +14,6 @@ const io = new Server(server, {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Ruter
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -23,14 +22,12 @@ app.get('/mobile', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'mobile.html'));
 });
 
-// Spill-tilstand
 let players = [];
 let deck = [];
 let dealerHand = [];
-let gameStatus = 'WAITING'; // WAITING, BETTING, PLAYING, GAME_OVER
+let gameStatus = 'WAITING'; 
 let currentTurnIndex = 0;
 
-// Kortstokk-funksjoner
 function createDeck() {
   const suits = ['♠', '♥', '♦', '♣'];
   const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
@@ -54,7 +51,6 @@ function shuffle(array) {
 function calculateHand(hand) {
   let score = 0;
   let aces = 0;
-
   for (let card of hand) {
     if (['J', 'Q', 'K'].includes(card.value)) {
       score += 10;
@@ -65,12 +61,10 @@ function calculateHand(hand) {
       score += parseInt(card.value);
     }
   }
-
   while (score > 21 && aces > 0) {
     score -= 10;
     aces -= 1;
   }
-
   return score;
 }
 
@@ -85,7 +79,6 @@ function startBettingPhase() {
     p.score = 0;
     p.bet = 0;
     p.hasBet = false;
-    p.status = 'WAITING';
   });
 
   broadcastState();
@@ -94,16 +87,12 @@ function startBettingPhase() {
 function dealInitialCards() {
   gameStatus = 'PLAYING';
 
-  // Del ut 2 kort til hver spiller
   players.forEach(p => {
     p.hand = [deck.pop(), deck.pop()];
     p.score = calculateHand(p.hand);
-    p.status = 'PLAYING';
   });
 
-  // Del ut 2 kort til dealer
   dealerHand = [deck.pop(), deck.pop()];
-
   currentTurnIndex = 0;
   checkNextTurn();
 }
@@ -140,7 +129,6 @@ function broadcastState() {
     ? calculateHand(dealerHand) 
     : (dealerHand.length > 0 ? calculateHand([dealerHand[0]]) : 0);
 
-  // Send felles spilltilstand til storskjermen
   io.emit('game_state', {
     gameStatus,
     dealerHand,
@@ -156,7 +144,6 @@ function broadcastState() {
     }))
   });
 
-  // Send individuelt event til hver mobil slik at kort og bud skifter umiddelbart
   players.forEach((p, index) => {
     io.to(p.id).emit('player_state', {
       gameStatus,
@@ -169,22 +156,19 @@ function broadcastState() {
   });
 }
 
-// Socket.io tilkoblinger
 io.on('connection', (socket) => {
-  console.log('Ny tilkobling:', socket.id);
-
   socket.on('join_game', (data) => {
-    const existingPlayer = players.find(p => p.id === socket.id);
-    if (!existingPlayer) {
-      players.push({
+    let player = players.find(p => p.id === socket.id);
+    if (!player) {
+      player = {
         id: socket.id,
         name: data.name || 'Anonym',
         hand: [],
         score: 0,
         bet: 0,
-        hasBet: false,
-        status: 'WAITING'
-      });
+        hasBet: false
+      };
+      players.push(player);
     }
     broadcastState();
   });
@@ -195,15 +179,21 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('reset_game', () => {
+    players = [];
+    dealerHand = [];
+    gameStatus = 'WAITING';
+    broadcastState();
+  });
+
   socket.on('place_bet', (data) => {
     const player = players.find(p => p.id === socket.id);
-    if (!player || gameStatus !== 'BETTING') return;
+    if (!player) return;
 
     player.bet = parseInt(data.amount) || 0;
     player.hasBet = true;
 
-    // Sjekk om alle tilkoblede spillere har lagt inn bud
-    const allBet = players.every(p => p.hasBet);
+    const allBet = players.length > 0 && players.every(p => p.hasBet);
     if (allBet) {
       dealInitialCards();
     } else {
@@ -213,12 +203,10 @@ io.on('connection', (socket) => {
 
   socket.on('player_hit', () => {
     if (gameStatus !== 'PLAYING') return;
-
     const currentPlayer = players[currentTurnIndex];
     if (currentPlayer && currentPlayer.id === socket.id) {
       currentPlayer.hand.push(deck.pop());
       currentPlayer.score = calculateHand(currentPlayer.hand);
-
       if (currentPlayer.score >= 21) {
         currentTurnIndex++;
         checkNextTurn();
@@ -230,7 +218,6 @@ io.on('connection', (socket) => {
 
   socket.on('player_stand', () => {
     if (gameStatus !== 'PLAYING') return;
-
     const currentPlayer = players[currentTurnIndex];
     if (currentPlayer && currentPlayer.id === socket.id) {
       currentTurnIndex++;
@@ -239,15 +226,12 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    console.log('Spiller koblet fra:', socket.id);
     players = players.filter(p => p.id !== socket.id);
-
     if (players.length === 0) {
       gameStatus = 'WAITING';
     } else if (gameStatus === 'PLAYING') {
       checkNextTurn();
     }
-
     broadcastState();
   });
 });

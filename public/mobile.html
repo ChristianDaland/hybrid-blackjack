@@ -9,11 +9,7 @@
   <title>Blackjack - Mobil Spiller</title>
   <script src="/socket.io/socket.io.js"></script>
   <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background-color: #0f172a;
@@ -129,7 +125,6 @@
   </div>
 
   <script>
-    // Tvinger ren WebSocket for lynrask oppdatering uten forsinkelse
     const socket = io({ transports: ['websocket'] });
 
     function joinGame() {
@@ -154,19 +149,23 @@
     function stand() { socket.emit('player_stand'); }
 
     socket.on('player_state', (data) => {
-      // Sjekk om det er tid for å legge inn bud
-      if (data.gameStatus === 'BETTING') {
+      // 1. VENTER PÅ BETTING: Hvis spillet krever bud og spilleren ikke har satset ennå
+      if (data.gameStatus === 'BETTING' && !data.hasBet) {
+        document.getElementById('login-view').style.display = 'none';
         document.getElementById('bet-view').style.display = 'block';
         document.getElementById('game-view').style.display = 'none';
         return;
       }
 
-      // Når runden starter, skjul budskjerm og vis spillskjerm
-      document.getElementById('bet-view').style.display = 'none';
-      document.getElementById('game-view').style.display = 'block';
+      // 2. SPILLSKJERM: Når budet er satt eller spillet er i gang
+      if (document.getElementById('login-view').style.display === 'none') {
+        document.getElementById('bet-view').style.display = 'none';
+        document.getElementById('game-view').style.display = 'block';
+      }
+
       document.getElementById('display-bet').innerText = `Bud: ${data.bet || 0} kr`;
 
-      // Tegn kortene på mobilen
+      // Tegn kort
       const cardsContainer = document.getElementById('my-cards');
       cardsContainer.innerHTML = '';
       if (data.hand && data.hand.length > 0) {
@@ -188,7 +187,6 @@
       if (data.myTurn && data.gameStatus === 'PLAYING') {
         turnBadge.style.display = 'inline-block';
         controls.style.display = 'flex';
-        // Doble-knappen vises kun dersom spilleren har eksakt 2 kort
         doubleBtn.style.display = data.canDouble ? 'block' : 'none';
       } else {
         turnBadge.style.display = 'none';

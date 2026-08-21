@@ -11,6 +11,7 @@ const io = new Server(server, {
   transports: ['websocket', 'polling']
 });
 
+// Tvinger alltid fersk versjon uten cache
 app.use((req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.set('Pragma', 'no-cache');
@@ -21,7 +22,6 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, 'public')));
 
 let players = []; 
-// Player Object: { id, name, hand: [], score: 0, bet: 0, status: 'WAITING'|'BETTING'|'PLAYING'|'BUST'|'STAND'|'DOUBLED' }
 let dealerHand = [];
 let deck = [];
 let currentTurnIndex = -1;
@@ -44,19 +44,11 @@ function calculateScore(hand) {
   let aces = 0;
   for (let card of hand) {
     if (card.value === '?') continue;
-    if (['J', 'Q', 'K'].includes(card.value)) {
-      score += 10;
-    } else if (card.value === 'A') {
-      aces += 1;
-      score += 11;
-    } else {
-      score += parseInt(card.value);
-    }
+    if (['J', 'Q', 'K'].includes(card.value)) score += 10;
+    else if (card.value === 'A') { aces += 1; score += 11; }
+    else score += parseInt(card.value);
   }
-  while (score > 21 && aces > 0) {
-    score -= 10;
-    aces -= 1;
-  }
+  while (score > 21 && aces > 0) { score -= 10; aces -= 1; }
   return score;
 }
 
@@ -66,7 +58,7 @@ function broadcastState() {
     visibleDealerHand = [dealerHand[0], { suit: '?', value: '?' }];
   }
 
-  // Til Bordskjerm (iPad)
+  // Til iPad / Bordskjerm
   io.emit('game_state', {
     players: players.map((p, idx) => ({
       id: p.id,
@@ -85,13 +77,14 @@ function broadcastState() {
     currentTurnPlayer: currentTurnIndex >= 0 && players[currentTurnIndex] ? players[currentTurnIndex].name : null
   });
 
-  // Til Hver Mobil
+  // Til Mobilene
   players.forEach((p, idx) => {
     io.to(p.id).emit('player_state', {
       hand: p.hand,
       score: p.score,
       bet: p.bet,
       status: p.status,
+      hasBet: p.bet > 0,
       myTurn: idx === currentTurnIndex && gameStatus === 'PLAYING',
       gameStatus,
       canDouble: p.hand.length === 2 && idx === currentTurnIndex && gameStatus === 'PLAYING'
@@ -104,10 +97,9 @@ function nextTurn() {
   if (currentTurnIndex >= players.length) {
     playDealerTurn();
   } else {
-    // Sjekk om spilleren fikk Blackjack med en gang (21 på 2 kort)
     if (players[currentTurnIndex].score === 21) {
       players[currentTurnIndex].status = 'STAND';
-      nextTurn(); // Gå automatisk videre
+      nextTurn();
     } else {
       players[currentTurnIndex].status = 'PLAYING';
       broadcastState();
@@ -130,7 +122,6 @@ async function playDealerTurn() {
 }
 
 io.on('connection', (socket) => {
-  // Bli med fra mobil
   socket.on('join_game', ({ name }) => {
     if (!players.find(p => p.id === socket.id)) {
       players.push({
@@ -145,7 +136,7 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
-  // Start ny bud-runde fra iPad
+  // Start budrunde fra iPad
   socket.on('start_game', () => {
     if (players.length === 0) return;
 
@@ -164,14 +155,14 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
-  // Spiller plasserer bud
+  // Spiller sender bud
   socket.on('place_bet', ({ amount }) => {
     const player = players.find(p => p.id === socket.id);
     if (player && gameStatus === 'BETTING') {
       player.bet = parseInt(amount) || 10;
       player.status = 'WAITING';
 
-      // Hvis ALLE har satset -> Del ut kort og start
+      // Sjekk om ALLE har lagt inn bud
       const allBet = players.every(p => p.bet > 0);
       if (allBet) {
         dealerHand = [deck.pop(), deck.pop()];
@@ -187,13 +178,11 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Trekk kort (Hit)
   socket.on('player_hit', () => {
     const player = players[currentTurnIndex];
     if (player && player.id === socket.id && gameStatus === 'PLAYING') {
       player.hand.push(deck.pop());
       player.score = calculateScore(player.hand);
-
       if (player.score > 21) {
         player.status = 'BUST';
         nextTurn();
@@ -203,24 +192,17 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Doble bud (Double Down)
   socket.on('player_double', () => {
     const player = players[currentTurnIndex];
     if (player && player.id === socket.id && gameStatus === 'PLAYING' && player.hand.length === 2) {
-      player.bet *= 2; // Dobler innsatsen
-      player.hand.push(deck.pop()); // Får KUN 1 kort til
+      player.bet *= 2;
+      player.hand.push(deck.pop());
       player.score = calculateScore(player.hand);
-
-      if (player.score > 21) {
-        player.status = 'BUST';
-      } else {
-        player.status = 'DOUBLED';
-      }
-      nextTurn(); // Turen avsluttes automatisk etter dobling
+      player.status = player.score > 21 ? 'BUST' : 'DOUBLED';
+      nextTurn();
     }
   });
 
-  // Stå (Stand)
   socket.on('player_stand', () => {
     const player = players[currentTurnIndex];
     if (player && player.id === socket.id && gameStatus === 'PLAYING') {

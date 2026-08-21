@@ -81,7 +81,7 @@ function finishDealerTurn() {
     if (p.score > 21) {
       p.resultText = 'Bust (Tapt)';
     } else if (dealerScore > 21) {
-      p.resultText = 'VANT! (Banken ryke)';
+      p.resultText = 'VANT! (Banken gikk over)';
       p.chips += p.bet * 2;
     } else if (p.score > dealerScore) {
       p.resultText = 'VANT!';

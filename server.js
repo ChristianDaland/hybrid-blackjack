@@ -5,114 +5,182 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Ruter
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 app.get('/mobile', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'mobile.html'));
 });
 
+// Spill-tilstand
 let players = [];
+let deck = [];
 let dealerHand = [];
-let currentTurnIndex = 0;
 let gameStatus = 'WAITING'; // WAITING, BETTING, PLAYING, GAME_OVER
+let currentTurnIndex = 0;
 
+// Kortstokk-funksjoner
 function createDeck() {
   const suits = ['♠', '♥', '♦', '♣'];
   const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
-  let deck = [];
-  for (let suit of suits) {
-    for (let value of values) {
-      deck.push({ suit, value });
+  let newDeck = [];
+  for (let s of suits) {
+    for (let v of values) {
+      newDeck.push({ suit: s, value: v });
     }
   }
-  return deck.sort(() => Math.random() - 0.5);
+  return newDeck;
 }
 
-let deck = createDeck();
-
-function getCardValue(card) {
-  if (['J', 'Q', 'K'].includes(card.value)) return 10;
-  if (card.value === 'A') return 11;
-  return parseInt(card.value);
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
 }
 
-function calculateScore(hand) {
+function calculateHand(hand) {
   let score = 0;
   let aces = 0;
+
   for (let card of hand) {
-    if (card.value === '?') continue;
-    score += getCardValue(card);
-    if (card.value === 'A') aces++;
+    if (['J', 'Q', 'K'].includes(card.value)) {
+      score += 10;
+    } else if (card.value === 'A') {
+      aces += 1;
+      score += 11;
+    } else {
+      score += parseInt(card.value);
+    }
   }
+
   while (score > 21 && aces > 0) {
     score -= 10;
-    aces--;
+    aces -= 1;
   }
+
   return score;
 }
 
-function broadcastState() {
-  const visibleDealerHand = (gameStatus === 'PLAYING') 
-    ? [dealerHand[0], { suit: '?', value: '?' }] 
-    : dealerHand;
+function startBettingPhase() {
+  deck = shuffle(createDeck());
+  dealerHand = [];
+  gameStatus = 'BETTING';
+  currentTurnIndex = 0;
 
-  const gameState = {
-    dealerHand: visibleDealerHand,
-    dealerScore: calculateScore(visibleDealerHand),
-    gameStatus,
-    players: players.map((p, index) => ({
-      id: p.id,
-      name: p.name,
-      hand: p.hand,
-      score: calculateScore(p.hand),
-      bet: p.bet,
-      hasBet: p.hasBet,
-      isCurrentTurn: index === currentTurnIndex && gameStatus === 'PLAYING',
-      status: p.status
-    }))
-  };
-
-  io.emit('game_state', gameState);
-
-  players.forEach((p, index) => {
-    io.to(p.id).emit('player_state', {
-      hand: p.hand,
-      score: calculateScore(p.hand),
-      bet: p.bet,
-      hasBet: p.hasBet,
-      myTurn: index === currentTurnIndex && gameStatus === 'PLAYING',
-      gameStatus
-    });
+  players.forEach(p => {
+    p.hand = [];
+    p.score = 0;
+    p.bet = 0;
+    p.hasBet = false;
+    p.status = 'WAITING';
   });
+
+  broadcastState();
 }
 
-function checkAllBetsPlaced() {
-  if (players.length > 0 && players.every(p => p.hasBet)) {
-    // Alle har bydd – start utdeling!
-    gameStatus = 'PLAYING';
-    
-    // Del ut 2 kort til hver
-    players.forEach(p => {
-      p.hand = [deck.pop(), deck.pop()];
-      p.status = 'PLAYING';
-    });
+function dealInitialCards() {
+  gameStatus = 'PLAYING';
 
-    dealerHand = [deck.pop(), deck.pop()];
-    currentTurnIndex = 0;
+  // Del ut 2 kort til hver spiller
+  players.forEach(p => {
+    p.hand = [deck.pop(), deck.pop()];
+    p.score = calculateHand(p.hand);
+    p.status = 'PLAYING';
+  });
+
+  // Del ut 2 kort til dealer
+  dealerHand = [deck.pop(), deck.pop()];
+
+  currentTurnIndex = 0;
+  checkNextTurn();
+}
+
+function checkNextTurn() {
+  if (currentTurnIndex >= players.length) {
+    playDealerTurn();
+    return;
+  }
+
+  const currentPlayer = players[currentTurnIndex];
+  if (currentPlayer.score >= 21) {
+    currentTurnIndex++;
+    checkNextTurn();
+  } else {
     broadcastState();
   }
 }
 
+function playDealerTurn() {
+  gameStatus = 'GAME_OVER';
+  let dealerScore = calculateHand(dealerHand);
+
+  while (dealerScore < 17) {
+    dealerHand.push(deck.pop());
+    dealerScore = calculateHand(dealerHand);
+  }
+
+  broadcastState();
+}
+
+function broadcastState() {
+  const dealerScore = gameStatus === 'GAME_OVER' 
+    ? calculateHand(dealerHand) 
+    : (dealerHand.length > 0 ? calculateHand([dealerHand[0]]) : 0);
+
+  // Send felles spilltilstand til storskjermen
+  io.emit('game_state', {
+    gameStatus,
+    dealerHand,
+    dealerScore,
+    players: players.map((p, index) => ({
+      id: p.id,
+      name: p.name,
+      hand: p.hand,
+      score: p.score,
+      bet: p.bet,
+      hasBet: p.hasBet,
+      isCurrentTurn: gameStatus === 'PLAYING' && index === currentTurnIndex
+    }))
+  });
+
+  // Send individuelt event til hver mobil slik at kort og bud skifter umiddelbart
+  players.forEach((p, index) => {
+    io.to(p.id).emit('player_state', {
+      gameStatus,
+      hand: p.hand,
+      score: p.score,
+      bet: p.bet,
+      hasBet: p.hasBet,
+      myTurn: gameStatus === 'PLAYING' && index === currentTurnIndex
+    });
+  });
+}
+
+// Socket.io tilkoblinger
 io.on('connection', (socket) => {
+  console.log('Ny tilkobling:', socket.id);
+
   socket.on('join_game', (data) => {
-    const existing = players.find(p => p.id === socket.id);
-    if (!existing) {
+    const existingPlayer = players.find(p => p.id === socket.id);
+    if (!existingPlayer) {
       players.push({
         id: socket.id,
-        name: data.name,
+        name: data.name || 'Anonym',
         hand: [],
+        score: 0,
         bet: 0,
         hasBet: false,
         status: 'WAITING'
@@ -121,41 +189,39 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
-  socket.on('start_game', () => {
-    if (players.length === 0) return;
-    deck = createDeck();
-    dealerHand = [];
-    currentTurnIndex = 0;
-    gameStatus = 'BETTING';
-
-    players.forEach(p => {
-      p.hand = [];
-      p.bet = 0;
-      p.hasBet = false;
-      p.status = 'BETTING';
-    });
-
-    broadcastState();
+  socket.on('start_new_hand', () => {
+    if (players.length > 0) {
+      startBettingPhase();
+    }
   });
 
   socket.on('place_bet', (data) => {
     const player = players.find(p => p.id === socket.id);
-    if (player && gameStatus === 'BETTING') {
-      player.bet = parseInt(data.amount) || 0;
-      player.hasBet = true;
+    if (!player || gameStatus !== 'BETTING') return;
+
+    player.bet = parseInt(data.amount) || 0;
+    player.hasBet = true;
+
+    // Sjekk om alle tilkoblede spillere har lagt inn bud
+    const allBet = players.every(p => p.hasBet);
+    if (allBet) {
+      dealInitialCards();
+    } else {
       broadcastState();
-      checkAllBetsPlaced();
     }
   });
 
   socket.on('player_hit', () => {
     if (gameStatus !== 'PLAYING') return;
-    const player = players[currentTurnIndex];
-    if (player && player.id === socket.id) {
-      player.hand.push(deck.pop());
-      if (calculateScore(player.hand) > 21) {
-        player.status = 'BUST';
-        nextTurn();
+
+    const currentPlayer = players[currentTurnIndex];
+    if (currentPlayer && currentPlayer.id === socket.id) {
+      currentPlayer.hand.push(deck.pop());
+      currentPlayer.score = calculateHand(currentPlayer.hand);
+
+      if (currentPlayer.score >= 21) {
+        currentTurnIndex++;
+        checkNextTurn();
       } else {
         broadcastState();
       }
@@ -164,43 +230,29 @@ io.on('connection', (socket) => {
 
   socket.on('player_stand', () => {
     if (gameStatus !== 'PLAYING') return;
-    const player = players[currentTurnIndex];
-    if (player && player.id === socket.id) {
-      player.status = 'STAND';
-      nextTurn();
+
+    const currentPlayer = players[currentTurnIndex];
+    if (currentPlayer && currentPlayer.id === socket.id) {
+      currentTurnIndex++;
+      checkNextTurn();
     }
   });
 
-  socket.on('reset_game', () => {
-    players = [];
-    dealerHand = [];
-    gameStatus = 'WAITING';
-    currentTurnIndex = 0;
-    broadcastState();
-  });
-
   socket.on('disconnect', () => {
+    console.log('Spiller koblet fra:', socket.id);
     players = players.filter(p => p.id !== socket.id);
+
+    if (players.length === 0) {
+      gameStatus = 'WAITING';
+    } else if (gameStatus === 'PLAYING') {
+      checkNextTurn();
+    }
+
     broadcastState();
   });
 });
 
-function nextTurn() {
-  currentTurnIndex++;
-  if (currentTurnIndex >= players.length) {
-    playDealer();
-  } else {
-    broadcastState();
-  }
-}
-
-function playDealer() {
-  while (calculateScore(dealerHand) < 17) {
-    dealerHand.push(deck.pop());
-  }
-  gameStatus = 'GAME_OVER';
-  broadcastState();
-}
-
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server kjører på port ${PORT}`));
+server.listen(PORT, () => {
+  console.log(`Server kjører på port ${PORT}`);
+});

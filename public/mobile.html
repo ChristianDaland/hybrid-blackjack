@@ -26,7 +26,7 @@
       text-align: center;
       box-shadow: 0 10px 25px rgba(0,0,0,0.5);
     }
-    input[type="text"] {
+    input[type="number"], input[type="text"] {
       width: 100%;
       padding: 16px;
       border-radius: 12px;
@@ -47,6 +47,7 @@
       cursor: pointer;
     }
     .btn-join { background-color: #2563eb; color: white; }
+    .btn-bet { background-color: #facc15; color: #000; margin-top: 10px; }
     .btn-hit { background-color: #16a34a; color: white; }
     .btn-stand { background-color: #dc2626; color: white; }
     
@@ -96,16 +97,23 @@
     <button class="btn-join" onclick="joinGame()">Bli med</button>
   </div>
 
+  <!-- Budgivning -->
+  <div id="bet-view" class="card-panel" style="display: none;">
+    <h2>Plasser ditt bud</h2>
+    <p style="color: #94a3b8; margin: 10px 0;">Hvor mye vil du satse?</p>
+    <input type="number" id="bet-amount" value="100" step="50" min="10">
+    <button class="btn-bet" onclick="placeBet()">Bekreft Bud</button>
+  </div>
+
   <!-- Spillskjerm -->
   <div id="game-view" class="card-panel" style="display: none;">
-    <h2 id="display-name" style="margin-bottom: 10px;">Spiller</h2>
+    <h2 id="display-name" style="margin-bottom: 5px;">Spiller</h2>
+    <p id="my-bet-display" style="color: #facc15; margin-bottom: 10px;">Bud: 0 kr</p>
+    
     <div id="turn-badge" class="badge" style="display: none;">Din Tur!</div>
 
-    <!-- Kortene vises direkte i dette feltet -->
-    <div id="cards-wrapper">
-      <div id="my-cards" class="cards-container"></div>
-      <h3 id="hand-score">Håndverdi: 0</h3>
-    </div>
+    <div id="my-cards" class="cards-container"></div>
+    <h3 id="hand-score">Håndverdi: 0</h3>
 
     <div id="controls" class="controls" style="display: none;">
       <button class="btn-hit" onclick="hit()">Trekk (Hit)</button>
@@ -114,7 +122,7 @@
   </div>
 
   <script>
-    const socket = io();
+    const socket = io({ transports: ['websocket'] });
 
     function joinGame() {
       const name = document.getElementById('player-name').value.trim();
@@ -126,11 +134,32 @@
       }
     }
 
+    function placeBet() {
+      const amount = document.getElementById('bet-amount').value;
+      socket.emit('place_bet', { amount });
+      document.getElementById('bet-view').style.display = 'none';
+      document.getElementById('game-view').style.display = 'block';
+    }
+
     function hit() { socket.emit('player_hit'); }
     function stand() { socket.emit('player_stand'); }
 
-    // Lytt på spilleroppdateringer fra versjon 2 serveren
     socket.on('player_state', (data) => {
+      // Vis budskjerm dersom statusen er BETTING og vi ikke har lagt inn bud ennå
+      if (data.gameStatus === 'BETTING' && !data.hasBet) {
+        document.getElementById('bet-view').style.display = 'block';
+        document.getElementById('game-view').style.display = 'none';
+        return;
+      }
+
+      document.getElementById('bet-view').style.display = 'none';
+      document.getElementById('game-view').style.display = 'block';
+
+      if (data.bet) {
+        document.getElementById('my-bet-display').innerText = `Bud: ${data.bet} kr`;
+      }
+
+      // Render kortene umiddelbart
       const cardsContainer = document.getElementById('my-cards');
       cardsContainer.innerHTML = '';
 

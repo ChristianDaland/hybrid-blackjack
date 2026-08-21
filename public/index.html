@@ -25,11 +25,18 @@
     .qr-box {
       background: white;
       color: #064e3b;
-      padding: 10px 15px;
+      padding: 8px 12px;
       border-radius: 8px;
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       font-weight: bold;
       text-align: center;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .qr-box img {
+      width: 60px;
+      height: 60px;
     }
     main {
       flex: 1;
@@ -91,8 +98,11 @@
       <p style="opacity: 0.8;">Bordskjerm (Banken)</p>
     </div>
     <div class="qr-box">
-      SKANN FOR Å BLI MED:<br>
-      <span style="font-size: 0.8rem; font-weight: normal;">hybrid-blackjack.onrender.com/mobile</span>
+      <div>
+        SKANN FOR Å BLI MED:<br>
+        <span style="font-size: 0.75rem; font-weight: normal;">hybrid-blackjack.onrender.com/mobile</span>
+      </div>
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://hybrid-blackjack.onrender.com/mobile" alt="QR-kode">
     </div>
   </header>
 

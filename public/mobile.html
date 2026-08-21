@@ -123,13 +123,13 @@
 
   <script>
     const socket = io();
-    let hasPlacedBet = false;
+    let myName = '';
 
     function joinGame() {
       const name = document.getElementById('player-name').value.trim();
       if (name) {
+        myName = name;
         socket.emit('join_game', { name });
-        document.getElementById('login-view').style.display = 'none';
         document.getElementById('display-name').innerText = name;
       }
     }
@@ -137,7 +137,6 @@
     function placeBet() {
       const amount = document.getElementById('bet-amount').value;
       socket.emit('place_bet', { amount });
-      hasPlacedBet = true;
       document.getElementById('bet-view').style.display = 'none';
       document.getElementById('game-view').style.display = 'block';
     }
@@ -146,18 +145,16 @@
     function stand() { socket.emit('player_stand'); }
 
     socket.on('player_state', (data) => {
-      // Hvis nytt spill har startet (BETTING), nullstill bud-status
-      if (data.gameStatus === 'BETTING') {
-        if (!data.hasBet) {
-          hasPlacedBet = false;
-          document.getElementById('login-view').style.display = 'none';
-          document.getElementById('game-view').style.display = 'none';
-          document.getElementById('bet-view').style.display = 'block';
-          return;
-        }
+      document.getElementById('login-view').style.display = 'none';
+
+      // 1. Vis budskjermen dersom runden krever bud og spilleren ikke har bydd ennå
+      if (data.gameStatus === 'BETTING' && !data.hasBet) {
+        document.getElementById('game-view').style.display = 'none';
+        document.getElementById('bet-view').style.display = 'block';
+        return;
       }
 
-      // Hvis vi har lagt inn bud eller spillet er i gang
+      // 2. Vis spillskjermen
       document.getElementById('bet-view').style.display = 'none';
       document.getElementById('game-view').style.display = 'block';
 
@@ -165,7 +162,7 @@
         document.getElementById('my-bet-display').innerText = `Bud: ${data.bet} kr`;
       }
 
-      // Tegn kort
+      // Render kort
       const cardsContainer = document.getElementById('my-cards');
       cardsContainer.innerHTML = '';
 

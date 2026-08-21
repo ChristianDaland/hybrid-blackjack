@@ -7,36 +7,41 @@
   <script src="/socket.io/socket.io.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      height: 100dvh;
+      overflow: hidden;
+    }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background-color: #059669;
       color: white;
-      min-height: 100vh;
       display: flex;
       flex-direction: column;
     }
     header {
       background-color: #064e3b;
-      padding: 15px 30px;
+      padding: 10px 20px;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-shrink: 0;
     }
     .qr-box {
       background: white;
       color: #064e3b;
-      padding: 8px 12px;
+      padding: 6px 10px;
       border-radius: 8px;
-      font-size: 0.85rem;
+      font-size: 0.8rem;
       font-weight: bold;
       text-align: center;
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
     }
     .qr-box img {
-      width: 60px;
-      height: 60px;
+      width: 48px;
+      height: 48px;
     }
     main {
       flex: 1;
@@ -44,16 +49,25 @@
       flex-direction: column;
       align-items: center;
       justify-content: space-between;
-      padding: 30px;
+      padding: 15px;
+      overflow: hidden;
     }
-    .dealer-area { text-align: center; font-size: 1.5rem; font-weight: bold; }
-    .players-area { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; width: 100%; }
+    .dealer-area { text-align: center; font-size: 1.3rem; font-weight: bold; }
+    .players-area { 
+      display: flex; 
+      gap: 15px; 
+      justify-content: center; 
+      align-items: center;
+      flex-wrap: wrap; 
+      width: 100%; 
+      flex: 1;
+    }
     .player-card {
       background-color: #065f46;
       border: 2px solid #34d399;
       border-radius: 12px;
-      padding: 20px;
-      width: 240px;
+      padding: 12px;
+      width: 200px;
       text-align: center;
       position: relative;
       overflow: hidden;
@@ -71,65 +85,66 @@
       align-items: center;
       justify-content: center;
       color: #ef4444;
-      font-size: 5rem;
+      font-size: 4rem;
       font-weight: 900;
       z-index: 10;
       line-height: 1;
     }
     .eliminated-text {
-      font-size: 1.2rem;
+      font-size: 1rem;
       color: #ef4444;
       font-weight: bold;
-      margin-top: 5px;
-      letter-spacing: 2px;
+      margin-top: 4px;
+      letter-spacing: 1px;
     }
     .active-turn { border-color: #facc15; box-shadow: 0 0 15px #facc15; }
     .player-chips {
       color: #34d399;
       font-weight: bold;
-      font-size: 0.95rem;
-      margin-top: 4px;
-      margin-bottom: 8px;
+      font-size: 0.9rem;
+      margin-top: 2px;
+      margin-bottom: 6px;
     }
     .status-badge {
       display: inline-block;
       background: #facc15;
       color: black;
-      padding: 4px 8px;
+      padding: 3px 6px;
       border-radius: 6px;
-      font-size: 0.85rem;
+      font-size: 0.8rem;
       font-weight: bold;
     }
     .result-badge {
       background: #ef4444;
       color: white;
-      font-size: 1rem;
-      padding: 6px 12px;
+      font-size: 0.9rem;
+      padding: 4px 8px;
       border-radius: 6px;
-      margin-top: 8px;
+      margin-top: 6px;
       font-weight: bold;
     }
     .win-badge { background: #10b981; }
     .controls-bar {
       display: flex;
       gap: 15px;
-      margin-top: 20px;
+      margin-top: 5px;
+      flex-shrink: 0;
     }
     button {
-      padding: 12px 24px;
+      padding: 10px 20px;
       border-radius: 8px;
       border: none;
-      font-size: 1rem;
+      font-size: 0.95rem;
       font-weight: bold;
       cursor: pointer;
     }
     .btn-start { background-color: #2563eb; color: white; }
     .btn-reset { background-color: #64748b; color: white; }
-    .cards { display: flex; gap: 6px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
+    .cards { display: flex; gap: 6px; justify-content: center; margin-top: 8px; flex-wrap: wrap; }
     .card-small {
-      background: white; color: black; width: 42px; height: 60px;
+      background: white; color: black; width: 38px; height: 54px;
       border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center;
-      font-weight: bold; font-size: 1.1rem;
+      font-weight: bold; font-size: 1rem;
     }
     .red { color: #dc2626; }
   </style>
@@ -138,13 +153,13 @@
 
   <header>
     <div>
-      <h1 style="font-size: 1.8rem;">BLACKJACK</h1>
-      <p style="opacity: 0.8;">Bordskjerm (Banken)</p>
+      <h1 style="font-size: 1.5rem;">BLACKJACK</h1>
+      <p style="opacity: 0.8; font-size: 0.85rem;">Bordskjerm (Banken)</p>
     </div>
     <div class="qr-box">
       <div>
         SKANN FOR Å BLI MED:<br>
-        <span style="font-size: 0.75rem; font-weight: normal;">hybrid-blackjack.onrender.com/mobile</span>
+        <span style="font-size: 0.7rem; font-weight: normal;">hybrid-blackjack.onrender.com/mobile</span>
       </div>
       <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://hybrid-blackjack.onrender.com/mobile" alt="QR-kode">
     </div>
@@ -152,7 +167,7 @@
 
   <main>
     <div class="dealer-area">
-      <h2>BANKEN (DEALER) — POENG: <span id="dealer-score">0</span></h2>
+      <h2 style="font-size: 1.3rem;">BANKEN (DEALER) — POENG: <span id="dealer-score">0</span></h2>
       <div id="dealer-cards" class="cards"></div>
     </div>
 
@@ -201,7 +216,7 @@
 
         let resultHTML = '';
         if (p.resultText && !p.isEliminated) {
-          const isWin = p.resultText.includes('VANT');
+          const isWin = p.resultText.includes('Vant');
           resultHTML = `<div class="result-badge ${isWin ? 'win-badge' : ''}">${p.resultText}</div>`;
         }
 
@@ -229,7 +244,7 @@
           <div class="player-chips">Saldo: ${p.chips} kr</div>
           <div class="status-badge">${statusText}</div>
           <div class="cards">${cardsHTML}</div>
-          <p style="margin-top: 10px;">Poeng: ${p.score}</p>
+          <p style="margin-top: 6px; font-size: 0.9rem;">Poeng: ${p.score}</p>
           ${resultHTML}
         `;
         playersList.appendChild(card);

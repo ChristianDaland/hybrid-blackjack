@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Blackjack Spillerklient</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+      margin: 0;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      justify-content: space-between;
+    }
+
+    /* Boks for navneinntasting */
+    #join-container {
+      background: #1e293b;
+      padding: 24px;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      margin: auto 0;
+      text-align: center;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 14px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #0f172a;
+      color: white;
+      font-size: 18px;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+
+    /* Generiske knapper */
+    .btn {
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: 12px;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-success { background: #16a34a; color: white; }
+    .btn-danger { background: #dc2626; color: white; }
+
+    .btn:disabled {
+      background: #334155;
+      color: #64748b;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* Spillgrensesnitt */
+    #game-container {
+      display: none;
+      flex-direction: column;
+      flex-grow: 1;
+      justify-content: space-between;
+    }
+
+    .header {
+      text-align: center;
+      padding: 12px;
+      background: #1e293b;
+      border-radius: 12px;
+    }
+
+    .status-badge {
+      font-size: 14px;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 20px;
+      display: inline-block;
+      margin-top: 6px;
+    }
+
+    .status-waiting { background: #475569; color: #f8fafc; }
+    .status-my-turn { background: #eab308; color: #0f172a; animation: pulse 1.5s infinite; }
+    .status-bust { background: #ef4444; color: white; }
+    .status-stand { background: #3b82f6; color: white; }
+
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.6; }
+      100% { opacity: 1; }
+    }
+
+    /* Kortbeholder (Hold to Reveal) */
+    .cards-area {
+      background: #0284c7;
+      border-radius: 16px;
+      padding: 20px;
+      min-height: 220px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      margin: 20px 0;
+      box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.3);
+      position: relative;
+    }
+
+    .cards-wrapper {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .card {
+      width: 75px;
+      height: 110px;
+      background: white;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 8px;
+      font-weight: bold;
+      font-size: 18px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    }
+
+    .card.red { color: #dc2626; }
+    .card.black { color: #0f172a; }
+
+    .card-back {
+      background: #1e293b;
+      border: 2px solid #38bdf8;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      text-align: center;
+    }
+
+    .reveal-hint {
+      font-size: 12px;
+      color: #e0f2fe;
+      margin-top: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* Handlingsknapper */
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: auto;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Inntasting av navn -->
+  <div id="join-container">
+    <h2>Velkommen til Blackjack</h2>
+    <input type="text" id="player-name" placeholder="Skriv inn navnet ditt" maxlength="12" />
+    <button class="btn btn-primary" onclick="joinGame()">Bli med i spillet</button>
+  </div>
+
+  <!-- Spillgrensesnitt -->
+  <div id="game-container">
+    <div class="header">
+      <h3 id="display-name" style="margin:0;">Spiller</h3>
+      <div id="turn-status" class="status-badge status-waiting">Venter på start...</div>
+    </div>
+
+    <!-- Kortområde med Hold-to-reveal -->
+    <div class="cards-area" id="cards-container">
+      <div id="cards-content" class="cards-wrapper">
+        <div class="card card-back">Trykk og hold for å se kort</div>
+      </div>
+      <div class="reveal-hint" id="reveal-text">Hold inne her for å se kortene</div>
+    </div>
+
+    <div style="text-align: center; font-size: 20px; font-weight: bold; margin-bottom: 10px;">
+      Håndverdi: <span id="score-display">0</span>
+    </div>
+
+    <!-- Spillkontroller -->
+    <div class="controls">
+      <button id="btn-hit" class="btn btn-success" onclick="hit()" disabled>Trekk (Hit)</button>
+      <button id="btn-stand" class="btn btn-danger" onclick="stand()" disabled>Stå (Stand)</button>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    let myHand = [];
+    let myScore = 0;
+    let isRevealed = false;
+
+    // Bli med i spillet
+    function joinGame() {
+      const nameInput = document.getElementById('player-name').value.trim();
+      if (!nameInput) return;
+
+      document.getElementById('display-name').innerText = nameInput;
+      document.getElementById('join-container').style.display = 'none';
+      document.getElementById('game-container').style.display = 'flex';
+
+      socket.emit('join_game', { name: nameInput });
+    }
+
+    // Mottak av oppdatert spillertilstand fra server
+    socket.on('player_state', (data) => {
+      myHand = data.hand;
+      myScore = data.score;
+
+      document.getElementById('score-display').innerText = data.score;
+
+      // Oppdater statusfelt
+      const statusBadge = document.getElementById('turn-status');
+      const btnHit = document.getElementById('btn-hit');
+      const btnStand = document.getElementById('btn-stand');
+
+      if (data.status === 'BUST') {
+        statusBadge.innerText = 'Sprakk (Bust!)';
+        statusBadge.className = 'status-badge status-bust';
+        btnHit.disabled = true;
+        btnStand.disabled = true;
+      } else if (data.status === 'STAND') {
+        statusBadge.innerText = 'Står';
+        statusBadge.className = 'status-badge status-stand';
+        btnHit.disabled = true;
+        btnStand.disabled = true;
+      } else if (data.myTurn) {
+        statusBadge.innerText = 'Din Tur!';
+        statusBadge.className = 'status-badge status-my-turn';
+        btnHit.disabled = false;
+        btnStand.disabled = false;
+      } else {
+        statusBadge.innerText = data.phase === 'PLAYING' ? 'Venter på tur...' : 'Venter på ny hånd';
+        statusBadge.className = 'status-badge status-waiting';
+        btnHit.disabled = true;
+        btnStand.disabled = true;
+      }
+
+      renderCards();
+    });
+
+    // Rendre kort (skjult eller synlig basert på touch/hold)
+    function renderCards() {
+      const cardsContent = document.getElementById('cards-content');
+
+      if (myHand.length === 0) {
+        cardsContent.innerHTML = '<div style="color:white;">Ingen kort utdelt ennå</div>';
+        return;
+      }
+
+      if (!isRevealed) {
+        cardsContent.innerHTML = `<div class="card card-back">Trykk og hold for å se (${myHand.length} kort)</div>`;
+        return;
+      }
+
+      // Vis synlige kort
+      cardsContent.innerHTML = myHand.map(card => {
+        const isRed = card.suit === '♥' || card.suit === '♦';
+        return `
+          <div class="card ${isRed ? 'red' : 'black'}">
+            <div>${card.value}</div>
+            <div style="text-align: center; font-size: 24px;">${card.suit}</div>
+            <div style="text-align: right;">${card.value}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Touch/Hold-to-reveal logikk[cite: 1]
+    const cardsContainer = document.getElementById('cards-container');
+
+    function reveal() {
+      isRevealed = true;
+      renderCards();
+    }
+
+    function hide() {
+      isRevealed = false;
+      renderCards();
+    }
+
+    cardsContainer.addEventListener('touchstart', (e) => { e.preventDefault(); reveal(); });
+    cardsContainer.addEventListener('touchend', hide);
+    cardsContainer.addEventListener('mousedown', reveal);
+    cardsContainer.addEventListener('mouseup', hide);
+    cardsContainer.addEventListener('mouseleave', hide);
+
+    // Handlingsknapper
+    function hit() {
+      socket.emit('player_hit');
+    }
+
+    function stand() {
+      socket.emit('player_stand');
+    }
+  </script>
+</body>
+</html>

@@ -6,26 +6,18 @@ const path = require('path');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
+  cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-app.get('/mobile', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'mobile.html'));
-});
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/mobile', (req, res) => res.sendFile(path.join(__dirname, 'public', 'mobile.html')));
 
 let players = [];
 let deck = [];
 let dealerHand = [];
-let gameStatus = 'WAITING'; 
+let gameStatus = 'WAITING'; // WAITING, BETTING, PLAYING, GAME_OVER
 let currentTurnIndex = 0;
 
 function createDeck() {
@@ -121,6 +113,17 @@ function playDealerTurn() {
     dealerScore = calculateHand(dealerHand);
   }
 
+  // Utbetaling/Gevinstberegning
+  players.forEach(p => {
+    if (p.score <= 21) {
+      if (dealerScore > 21 || p.score > dealerScore) {
+        p.chips += p.bet * 2; // Vant
+      } else if (p.score === dealerScore) {
+        p.chips += p.bet; // Uavgjort (Push)
+      }
+    }
+  });
+
   broadcastState();
 }
 
@@ -139,6 +142,7 @@ function broadcastState() {
       hand: p.hand,
       score: p.score,
       bet: p.bet,
+      chips: p.chips,
       hasBet: p.hasBet,
       isCurrentTurn: gameStatus === 'PLAYING' && index === currentTurnIndex
     }))
@@ -150,6 +154,7 @@ function broadcastState() {
       hand: p.hand,
       score: p.score,
       bet: p.bet,
+      chips: p.chips,
       hasBet: p.hasBet,
       myTurn: gameStatus === 'PLAYING' && index === currentTurnIndex
     });
@@ -166,6 +171,7 @@ io.on('connection', (socket) => {
         hand: [],
         score: 0,
         bet: 0,
+        chips: 500, // Starter med 500 kr
         hasBet: false
       };
       players.push(player);
@@ -190,7 +196,12 @@ io.on('connection', (socket) => {
     const player = players.find(p => p.id === socket.id);
     if (!player) return;
 
-    player.bet = parseInt(data.amount) || 0;
+    let betAmount = parseInt(data.amount) || 0;
+    if (betAmount > player.chips) betAmount = player.chips;
+    if (betAmount < 10) betAmount = Math.min(10, player.chips);
+
+    player.bet = betAmount;
+    player.chips -= betAmount; // Trekk fra innsats fra saldo
     player.hasBet = true;
 
     const allBet = players.length > 0 && players.every(p => p.hasBet);

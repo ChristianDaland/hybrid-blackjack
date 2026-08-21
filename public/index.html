@@ -53,8 +53,9 @@
       border: 2px solid #34d399;
       border-radius: 12px;
       padding: 20px;
-      width: 220px;
+      width: 240px;
       text-align: center;
+      position: relative;
     }
     .active-turn { border-color: #facc15; box-shadow: 0 0 15px #facc15; }
     .status-badge {
@@ -67,6 +68,16 @@
       font-weight: bold;
       margin-top: 5px;
     }
+    .result-badge {
+      background: #ef4444;
+      color: white;
+      font-size: 1rem;
+      padding: 6px 12px;
+      border-radius: 6px;
+      margin-top: 8px;
+      font-weight: bold;
+    }
+    .win-badge { background: #10b981; }
     .controls-bar {
       display: flex;
       gap: 15px;
@@ -82,12 +93,13 @@
     }
     .btn-start { background-color: #2563eb; color: white; }
     .btn-reset { background-color: #64748b; color: white; }
-    .cards { display: flex; gap: 6px; justify-content: center; margin-top: 10px; }
+    .cards { display: flex; gap: 6px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
     .card-small {
-      background: white; color: black; width: 40px; height: 60px;
-      border-radius: 4px; display: flex; align-items: center; justify-content: center;
-      font-weight: bold;
+      background: white; color: black; width: 42px; height: 60px;
+      border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      font-weight: bold; font-size: 1.1rem;
     }
+    .red { color: #dc2626; }
   </style>
 </head>
 <body>
@@ -138,8 +150,9 @@
       dealerCards.innerHTML = '';
       if (data.dealerHand) {
         data.dealerHand.forEach(card => {
+          const isRed = card.suit === '♥' || card.suit === '♦';
           const div = document.createElement('div');
-          div.className = 'card-small';
+          div.className = `card-small ${isRed ? 'red' : ''}`;
           div.innerText = `${card.value}${card.suit}`;
           dealerCards.appendChild(div);
         });
@@ -154,10 +167,26 @@
         
         let statusText = p.hasBet ? `Bud: ${p.bet} kr` : 'Venter på bud...';
 
+        let resultHTML = '';
+        if (p.resultText) {
+          const isWin = p.resultText.includes('VANT');
+          resultHTML = `<div class="result-badge ${isWin ? 'win-badge' : ''}">${p.resultText}</div>`;
+        }
+
+        let cardsHTML = '';
+        if (p.hand && p.hand.length > 0) {
+          cardsHTML = p.hand.map(c => {
+            const isRed = c.suit === '♥' || c.suit === '♦';
+            return `<div class="card-small ${isRed ? 'red' : ''}">${c.value}${c.suit}</div>`;
+          }).join('');
+        }
+
         card.innerHTML = `
           <h3>${p.name}</h3>
           <div class="status-badge">${statusText}</div>
-          <p style="margin-top: 15px;">Poeng: ${p.score}</p>
+          <div class="cards">${cardsHTML}</div>
+          <p style="margin-top: 10px;">Poeng: ${p.score}</p>
+          ${resultHTML}
         `;
         playersList.appendChild(card);
       });

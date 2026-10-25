@@ -187,6 +187,11 @@ function nextTurn() {
   }
 }
 
+// Uten penger er spilleren ute – også rett etter runden der innsatsen ble tapt
+function isEliminated(p) {
+  return p.chips === 0 && (p.bet === 0 || gameStatus === 'GAME_OVER');
+}
+
 function broadcastState() {
   const dealerScore = (gameStatus === 'GAME_OVER' || gameStatus === 'PLAYING')
     ? calculateHand(dealerHand) 
@@ -204,7 +209,7 @@ function broadcastState() {
       bet: p.bet,
       chips: p.chips,
       hasBet: p.hasBet,
-      isEliminated: p.chips === 0 && p.bet === 0,
+      isEliminated: isEliminated(p),
       resultText: p.resultText || '',
       isCurrentTurn: gameStatus === 'PLAYING' && index === currentTurnIndex
     }))
@@ -218,7 +223,7 @@ function broadcastState() {
       bet: p.bet,
       chips: p.chips,
       hasBet: p.hasBet,
-      isEliminated: p.chips === 0 && p.bet === 0,
+      isEliminated: isEliminated(p),
       resultText: p.resultText || '',
       myTurn: gameStatus === 'PLAYING' && index === currentTurnIndex
     });

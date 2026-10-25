@@ -455,11 +455,21 @@
       const eliminatedSec = document.getElementById('eliminated-section');
       gameMsg.className = 'game-msg';
 
-      // Hvis spilleren er slått ut (0 kr og 0 bud)
+      // Hvis spilleren er slått ut (ingen penger igjen)
       if (data.isEliminated) {
         eliminatedSec.style.display = 'block';
         bettingSec.style.display = 'none';
-        playingSec.style.display = 'none';
+        // Vis hånden fra runden der pengene tok slutt
+        const showLastHand = data.gameStatus === 'GAME_OVER' && data.hand && data.hand.length > 0;
+        playingSec.style.display = showLastHand ? 'block' : 'none';
+        if (showLastHand) {
+          renderCards(document.getElementById('cards-container'), data.hand);
+          const scoreEl = document.getElementById('display-score');
+          scoreEl.innerText = data.score;
+          scoreEl.classList.toggle('bust', data.score > 21);
+          turnActions.style.display = 'none';
+          waitMsg.style.display = 'none';
+        }
         gameMsg.innerText = '';
         return;
       } else {

@@ -421,6 +421,7 @@
     function statusText(data) {
       const active = data.players.filter(p => !p.isEliminated);
       if (data.gameStatus === 'WAITING' || data.players.length === 0) return 'Venter på spillere';
+      if (active.length === 0) return 'Spillet er over · alle er slått ut';
       if (data.gameStatus === 'BETTING') {
         const waiting = active.filter(p => !p.hasBet).length;
         return waiting > 0 ? `Plasser innsatsene · venter på <b>${waiting}</b>` : 'Deler ut kort';

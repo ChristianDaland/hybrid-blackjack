@@ -1,262 +1,304 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const Hand = require('pokersolver').Hand;
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, { cors: { origin: "*" } });
 
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
-const SUITS = ['c', 'd', 'h', 's'];
-const VALUES = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/mobile', (req, res) => res.sendFile(path.join(__dirname, 'public', 'mobile.html')));
+
+let players = [];
+let deck = [];
+let dealerHand = [];
+let gameStatus = 'WAITING'; // WAITING, BETTING, PLAYING, GAME_OVER
+let currentTurnIndex = 0;
 
 function createDeck() {
-  const deck = [];
-  for (let s of SUITS) {
-    for (let v of VALUES) {
-      deck.push(v + s);
+  const suits = ['♠', '♥', '♦', '♣'];
+  const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+  let newDeck = [];
+  for (let s of suits) {
+    for (let v of values) {
+      newDeck.push({ suit: s, value: v });
     }
   }
-  return shuffle(deck);
+  return newDeck;
 }
 
 function shuffle(array) {
-  let deck = [...array];
-  for (let i = deck.length - 1; i > 0; i--) {
+  for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [deck[i], deck[j]] = [deck[j], deck[i]];
+    [array[i], array[j]] = [array[j], array[i]];
   }
-  return deck;
+  return array;
 }
 
-function formatForSolver(card) {
-  return card;
-}
-
-// Oversetter engelske pokersolver-beskrivelser til pen norsk tekst med tall og farger
-function translateHandDescription(descr) {
-  let text = descr;
-
-  // Erstatt kortverdier (T -> 10)
-  text = text.replace(/\bT\b/g, '10');
-
-  // Oversett håndtyper
-  text = text.replace(/Straight Flush/g, 'Straight Flush');
-  text = text.replace(/Four of a Kind/g, 'Fire like');
-  text = text.replace(/Full House/g, 'Fullt Hus');
-  text = text.replace(/Flush/g, 'Flush');
-  text = text.replace(/Straight/g, 'Straight');
-  text = text.replace(/Three of a Kind/g, 'Tre like');
-  text = text.replace(/Two Pair/g, 'To Par');
-  text = text.replace(/Pair/g, 'Ett Par');
-  text = text.replace(/High Card/g, 'Høyt Kort');
-
-  // Oversett kortfarger hvis de nevnes i beskrivelsen
-  text = text.replace(/Spades/g, 'Spar');
-  text = text.replace(/Hearts/g, 'Hjerter');
-  text = text.replace(/Diamonds/g, 'Ruter');
-  text = text.replace(/Clubs/g, 'Kløver');
-
-  return text;
-}
-
-function evaluatePlayerHand(playerCards, boardCards, gameMode) {
-  const formattedBoard = boardCards.map(formatForSolver);
-  const formattedPlayer = playerCards.map(formatForSolver);
-
-  if (gameMode === 'TEXAS') {
-    const allCards = [...formattedPlayer, ...formattedBoard];
-    return Hand.solve(allCards);
-  } else {
-    let bestHand = null;
-    for (let i = 0; i < formattedPlayer.length; i++) {
-      for (let j = i + 1; j < formattedPlayer.length; j++) {
-        const hand2 = [formattedPlayer[i], formattedPlayer[j]];
-
-        for (let b1 = 0; b1 < formattedBoard.length; b1++) {
-          for (let b2 = b1 + 1; b2 < formattedBoard.length; b2++) {
-            for (let b3 = b2 + 1; b3 < formattedBoard.length; b3++) {
-              const board3 = [formattedBoard[b1], formattedBoard[b2], formattedBoard[b3]];
-              const combo = Hand.solve([...hand2, ...board3]);
-              if (!bestHand || combo.rank > bestHand.rank || (combo.rank === bestHand.rank && combo.compare(bestHand) > 0)) {
-                bestHand = combo;
-              }
-            }
-          }
-        }
-      }
+function calculateHand(hand) {
+  let score = 0;
+  let aces = 0;
+  for (let card of hand) {
+    if (['J', 'Q', 'K'].includes(card.value)) {
+      score += 10;
+    } else if (card.value === 'A') {
+      aces += 1;
+      score += 11;
+    } else {
+      score += parseInt(card.value, 10);
     }
-    return bestHand;
   }
+  while (score > 21 && aces > 0) {
+    score -= 10;
+    aces -= 1;
+  }
+  return score;
 }
 
-let gameState = {
-  gameMode: null, // Starter uten valgt modus
-  phase: 'VENTING',
-  board: [],
-  deck: [],
-  winnerInfo: null
-};
-
-let players = {};
-
-io.on('connection', (socket) => {
-  socket.on('join_game', (name) => {
-    const seatNumber = Object.keys(players).length + 1;
-    players[socket.id] = {
-      id: socket.id,
-      name: name,
-      seat: seatNumber,
-      cards: [],
-      folded: false,
-      role: ''
-    };
-    updateAll();
-  });
-
-  socket.on('set_game_mode', (mode) => {
-    gameState.gameMode = mode;
-    if (!mode) {
-      gameState.phase = 'VENTING';
-      gameState.board = [];
-      gameState.winnerInfo = null;
+function finishDealerTurn() {
+  let dealerScore = calculateHand(dealerHand);
+  
+  // Dealer trekker kun dersom det er minst én aktiv spiller igjen
+  const activePlayers = players.filter(p => p.chips > 0 || p.bet > 0);
+  if (activePlayers.length > 0) {
+    while (dealerScore < 17) {
+      dealerHand.push(deck.pop());
+      dealerScore = calculateHand(dealerHand);
     }
-    updateAll();
-  });
+  }
 
-  socket.on('start_new_hand', () => {
-    const playerList = Object.values(players);
-    if (playerList.length === 0 || !gameState.gameMode) return;
+  gameStatus = 'GAME_OVER';
 
-    gameState.deck = createDeck();
-    gameState.board = [];
-    gameState.phase = 'PREFLOP';
-    gameState.winnerInfo = null;
-
-    playerList.forEach((p, idx) => {
-      p.folded = false;
-      p.cards = [];
-      
-      // Roller med fulle navn
-      if (playerList.length === 2) {
-        p.role = idx === 0 ? 'Lilleblind' : 'Storeblind';
-      } else if (playerList.length > 2) {
-        p.role = idx === 0 ? 'Dealer' : idx === 1 ? 'Lilleblind' : idx === 2 ? 'Storeblind' : '';
-      } else {
-        p.role = 'Storeblind';
-      }
-      
-      const cardCount = gameState.gameMode === 'OMAHA' ? 4 : 2;
-      for (let i = 0; i < cardCount; i++) {
-        p.cards.push(gameState.deck.pop());
-      }
-    });
-
-    updateAll();
-  });
-
-  socket.on('next_phase', () => {
-    const activePlayers = Object.values(players).filter(p => !p.folded);
-
-    if (activePlayers.length === 1 && gameState.phase !== 'VENTING') {
-      gameState.phase = 'SHOWDOWN';
-      gameState.winnerInfo = {
-        winnerName: activePlayers[0].name,
-        descr: 'Alle andre kastet seg',
-        foldedWin: true
-      };
-      updateAll();
+  players.forEach(p => {
+    if (p.chips === 0 && p.bet === 0) {
+      p.resultText = 'SLÅTT UT';
       return;
     }
 
-    if (gameState.phase === 'PREFLOP') {
-      gameState.phase = 'FLOP';
-      gameState.board = [gameState.deck.pop(), gameState.deck.pop(), gameState.deck.pop()];
-    } else if (gameState.phase === 'FLOP') {
-      gameState.phase = 'TURN';
-      gameState.board.push(gameState.deck.pop());
-    } else if (gameState.phase === 'TURN') {
-      gameState.phase = 'RIVER';
-      gameState.board.push(gameState.deck.pop());
-    } else if (gameState.phase === 'RIVER' || gameState.phase === 'SHOWDOWN') {
-      gameState.phase = 'SHOWDOWN';
-      
-      const solvedHands = activePlayers.map(p => ({
-        player: p,
-        solved: evaluatePlayerHand(p.cards, gameState.board, gameState.gameMode)
-      }));
-
-      const handsOnly = solvedHands.map(sh => sh.solved);
-      const winningHands = Hand.winners(handsOnly);
-      
-      const winners = solvedHands.filter(sh => winningHands.includes(sh.solved));
-      const winnerNames = winners.map(w => w.player.name).join(' & ');
-      const rawDescr = winners[0].solved.descr;
-
-      gameState.winnerInfo = {
-        winnerName: winnerNames,
-        descr: translateHandDescription(rawDescr),
-        foldedWin: false
-      };
+    if (p.score > 21) {
+      p.resultText = 'Bust (Tapt)';
+    } else if (dealerScore > 21) {
+      p.resultText = 'VANT! (Banken gikk over)';
+      p.chips += p.bet * 2;
+    } else if (p.score > dealerScore) {
+      p.resultText = 'VANT!';
+      p.chips += p.bet * 2;
+    } else if (p.score === dealerScore) {
+      p.resultText = 'Uavgjort (Push)';
+      p.chips += p.bet;
+    } else {
+      p.resultText = 'Tapt';
     }
-    updateAll();
   });
 
-  socket.on('player_fold', () => {
-    if (players[socket.id]) {
-      players[socket.id].folded = true;
-      
-      const activePlayers = Object.values(players).filter(p => !p.folded);
-      if (activePlayers.length === 1 && gameState.phase !== 'VENTING') {
-        gameState.phase = 'SHOWDOWN';
-        gameState.winnerInfo = {
-          winnerName: activePlayers[0].name,
-          descr: 'Alle andre kastet seg',
-          foldedWin: true
-        };
+  broadcastState();
+}
+
+// Hopp over spillere uten innsats (slått ut eller ble med midt i runden) og spillere som allerede har 21
+function skipInactivePlayers() {
+  while (currentTurnIndex < players.length && (players[currentTurnIndex].bet === 0 || players[currentTurnIndex].score >= 21)) {
+    currentTurnIndex++;
+  }
+}
+
+function dealCards() {
+  if (deck.length < 10) deck = shuffle(createDeck());
+  gameStatus = 'PLAYING';
+
+  players.forEach(p => {
+    if (p.bet > 0) {
+      p.hand = [deck.pop(), deck.pop()];
+      p.score = calculateHand(p.hand);
+    }
+  });
+
+  dealerHand = [deck.pop(), deck.pop()];
+
+  // Sett tur til første aktive spiller
+  currentTurnIndex = 0;
+  skipInactivePlayers();
+
+  if (currentTurnIndex >= players.length) {
+    finishDealerTurn();
+  } else {
+    broadcastState();
+  }
+}
+
+function allActiveHaveBet() {
+  const activePlayers = players.filter(p => p.chips > 0 || p.bet > 0);
+  return activePlayers.length > 0 && activePlayers.every(p => p.hasBet);
+}
+
+function nextTurn() {
+  currentTurnIndex++;
+  
+  skipInactivePlayers();
+
+  if (currentTurnIndex >= players.length) {
+    finishDealerTurn();
+  } else {
+    broadcastState();
+  }
+}
+
+function broadcastState() {
+  const dealerScore = (gameStatus === 'GAME_OVER' || gameStatus === 'PLAYING')
+    ? calculateHand(dealerHand) 
+    : 0;
+
+  io.emit('game_state', {
+    gameStatus,
+    dealerHand,
+    dealerScore,
+    players: players.map((p, index) => ({
+      id: p.id,
+      name: p.name,
+      hand: p.hand,
+      score: p.score,
+      bet: p.bet,
+      chips: p.chips,
+      hasBet: p.hasBet,
+      isEliminated: p.chips === 0 && p.bet === 0,
+      resultText: p.resultText || '',
+      isCurrentTurn: gameStatus === 'PLAYING' && index === currentTurnIndex
+    }))
+  });
+
+  players.forEach((p, index) => {
+    io.to(p.id).emit('player_state', {
+      gameStatus,
+      hand: p.hand,
+      score: p.score,
+      bet: p.bet,
+      chips: p.chips,
+      hasBet: p.hasBet,
+      isEliminated: p.chips === 0 && p.bet === 0,
+      resultText: p.resultText || '',
+      myTurn: gameStatus === 'PLAYING' && index === currentTurnIndex
+    });
+  });
+}
+
+io.on('connection', (socket) => {
+
+  socket.on('join_game', (data) => {
+    let player = players.find(p => p.id === socket.id);
+    if (!player) {
+      player = {
+        id: socket.id,
+        name: data.name || 'Spiller',
+        hand: [],
+        score: 0,
+        bet: 0,
+        chips: 500,
+        hasBet: false,
+        resultText: ''
+      };
+      players.push(player);
+    }
+    broadcastState();
+  });
+
+  socket.on('start_new_hand', () => {
+    deck = shuffle(createDeck());
+    dealerHand = [];
+    gameStatus = 'BETTING';
+
+    players.forEach(p => {
+      p.hand = [];
+      p.score = 0;
+      p.bet = 0;
+      p.hasBet = false;
+      p.resultText = '';
+    });
+
+    // Finn første aktive spiller
+    currentTurnIndex = players.findIndex(p => p.chips > 0);
+    if (currentTurnIndex === -1) currentTurnIndex = 0;
+
+    broadcastState();
+  });
+
+  socket.on('reset_game', () => {
+    players = [];
+    dealerHand = [];
+    gameStatus = 'WAITING';
+    broadcastState();
+  });
+
+  socket.on('place_bet', (data) => {
+    const player = players.find(p => p.id === socket.id);
+    if (gameStatus !== 'BETTING' || !player || player.hasBet || player.chips === 0) return;
+
+    let betAmount = parseInt(data.amount, 10);
+    if (!(betAmount > 0)) betAmount = 50;
+    if (betAmount > player.chips) betAmount = player.chips;
+
+    player.bet = betAmount;
+    player.chips -= betAmount;
+    player.hasBet = true;
+
+    // Del ut kort når alle aktive spillere har bydd
+    if (allActiveHaveBet()) {
+      dealCards();
+      return;
+    }
+
+    broadcastState();
+  });
+
+  socket.on('player_hit', () => {
+    if (gameStatus !== 'PLAYING') return;
+    const currentPlayer = players[currentTurnIndex];
+    if (currentPlayer && currentPlayer.id === socket.id) {
+      currentPlayer.hand.push(deck.pop());
+      currentPlayer.score = calculateHand(currentPlayer.hand);
+      if (currentPlayer.score >= 21) {
+        nextTurn();
+      } else {
+        broadcastState();
       }
-      updateAll();
+    }
+  });
+
+  socket.on('player_stand', () => {
+    if (gameStatus !== 'PLAYING') return;
+    const currentPlayer = players[currentTurnIndex];
+    if (currentPlayer && currentPlayer.id === socket.id) {
+      nextTurn();
     }
   });
 
   socket.on('disconnect', () => {
-    delete players[socket.id];
-    updateAll();
+    const index = players.findIndex(p => p.id === socket.id);
+    if (index === -1) return;
+    players.splice(index, 1);
+
+    if (gameStatus === 'PLAYING') {
+      // Hold turen på riktig spiller når listen forskyves
+      if (index < currentTurnIndex) {
+        currentTurnIndex--;
+      } else if (index === currentTurnIndex) {
+        // Spilleren som hadde tur forsvant – gi turen videre
+        skipInactivePlayers();
+        if (currentTurnIndex >= players.length) {
+          finishDealerTurn();
+          return;
+        }
+      }
+    } else if (gameStatus === 'BETTING' && allActiveHaveBet()) {
+      // Den siste som manglet innsats forsvant
+      dealCards();
+      return;
+    }
+
+    broadcastState();
   });
 });
-
-function updateAll() {
-  const playerList = Object.values(players);
-
-  // Kort skal kun vises ved Showdown DERSOM runden ikke ble avgjort ved at alle foldet
-  const isShowdownWithCards = gameState.phase === 'SHOWDOWN' && (!gameState.winnerInfo || !gameState.winnerInfo.foldedWin);
-
-  io.emit('state_update', {
-    gameMode: gameState.gameMode,
-    phase: gameState.phase,
-    board: gameState.board,
-    winnerInfo: gameState.winnerInfo,
-    players: playerList.map(p => ({
-      name: p.name,
-      seat: p.seat,
-      role: p.role,
-      folded: p.folded,
-      cards: isShowdownWithCards && !p.folded ? p.cards : []
-    }))
-  });
-
-  playerList.forEach(p => {
-    io.to(p.id).emit('player_state', {
-      phase: gameState.phase,
-      cards: p.cards,
-      role: p.role,
-      folded: p.folded,
-      winnerInfo: gameState.winnerInfo
-    });
-  });
-}
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server kjører på port ${PORT}`));

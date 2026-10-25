@@ -62,6 +62,21 @@
       font-weight: bold; font-size: 1.3rem;
     }
     .red { color: #dc2626; }
+    .dealer-box {
+      background: #064e3b;
+      border-radius: 12px;
+      padding: 12px;
+      margin: 15px 0;
+    }
+    .dealer-box .cards { margin: 8px 0 0; }
+    .bet-prompt {
+      color: #facc15;
+      font-size: 1.3rem;
+      font-weight: bold;
+      margin-bottom: 12px;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse { 50% { opacity: 0.5; } }
     .eliminated-box {
       background: #450a0a;
       border: 2px solid #ef4444;
@@ -91,6 +106,12 @@
     <div class="chips">Saldo: <span id="display-chips">500</span> kr</div>
     <div class="bet">Bud: <span id="display-bet">0</span> kr</div>
 
+    <!-- BANKENS HÅND -->
+    <div id="dealer-section" class="dealer-box" style="display: none;">
+      <div style="font-weight: bold;">Banken — poeng: <span id="dealer-score">0</span></div>
+      <div id="dealer-cards" class="cards"></div>
+    </div>
+
     <!-- ELIMINERT SKJERM -->
     <div id="eliminated-section" class="eliminated-box" style="display: none;">
       <h2>DU ER UTE! ✕</h2>
@@ -99,7 +120,7 @@
 
     <!-- BETTING PANEL -->
     <div id="betting-section" style="display: none;">
-      <p style="margin-bottom: 10px;">Plasser ditt bud:</p>
+      <p class="bet-prompt">Plasser innsatsen din!</p>
       <input type="number" id="bet-amount" value="50" min="10" step="10">
       <button class="btn-primary" onclick="placeBet()">Sats penger</button>
     </div>
@@ -141,6 +162,28 @@
     function hit() { socket.emit('player_hit'); }
     function stand() { socket.emit('player_stand'); }
 
+    function renderCards(container, hand) {
+      container.innerHTML = '';
+      (hand || []).forEach(c => {
+        const isRed = c.suit === '♥' || c.suit === '♦';
+        const div = document.createElement('div');
+        div.className = `card-small ${isRed ? 'red' : ''}`;
+        div.innerText = `${c.value}${c.suit}`;
+        container.appendChild(div);
+      });
+    }
+
+    // Bankens hånd vises på mobilen mens runden spilles og når den er ferdig
+    socket.on('game_state', (data) => {
+      const dealerSec = document.getElementById('dealer-section');
+      const showDealer = (data.gameStatus === 'PLAYING' || data.gameStatus === 'GAME_OVER') && data.dealerHand.length > 0;
+      dealerSec.style.display = showDealer ? 'block' : 'none';
+      document.getElementById('dealer-score').innerText = data.dealerScore || 0;
+      renderCards(document.getElementById('dealer-cards'), data.dealerHand);
+    });
+
+    let wasAskedToBet = false;
+
     socket.on('player_state', (data) => {
       document.getElementById('display-chips').innerText = data.chips;
       document.getElementById('display-bet').innerText = data.bet;
@@ -163,30 +206,30 @@
         eliminatedSec.style.display = 'none';
       }
 
+      if (data.gameStatus !== 'BETTING') wasAskedToBet = false;
+
       if (data.gameStatus === 'BETTING') {
         playingSec.style.display = 'none';
         gameMsg.innerText = '';
         if (!data.hasBet) {
           bettingSec.style.display = 'block';
+          // Vibrer én gang når det er tid for å satse (fungerer på Android)
+          if (!wasAskedToBet && navigator.vibrate) navigator.vibrate(200);
+          wasAskedToBet = true;
         } else {
           bettingSec.style.display = 'none';
           gameMsg.innerText = 'Bud plassert! Venter på andre spillere...';
         }
+      } else if (data.gameStatus === 'PLAYING' && data.bet === 0) {
+        // Ble med midt i en runde
+        bettingSec.style.display = 'none';
+        playingSec.style.display = 'none';
+        gameMsg.innerText = 'Runden er i gang – du er med fra neste runde.';
       } else if (data.gameStatus === 'PLAYING' || data.gameStatus === 'GAME_OVER') {
         bettingSec.style.display = 'none';
         playingSec.style.display = 'block';
 
-        const cardsContainer = document.getElementById('cards-container');
-        cardsContainer.innerHTML = '';
-        if (data.hand) {
-          data.hand.forEach(c => {
-            const isRed = c.suit === '♥' || c.suit === '♦';
-            const div = document.createElement('div');
-            div.className = `card-small ${isRed ? 'red' : ''}`;
-            div.innerText = `${c.value}${c.suit}`;
-            cardsContainer.appendChild(div);
-          });
-        }
+        renderCards(document.getElementById('cards-container'), data.hand);
 
         document.getElementById('display-score').innerText = data.score;
 
@@ -203,7 +246,7 @@
         } else if (data.gameStatus === 'GAME_OVER') {
           turnActions.style.display = 'none';
           waitMsg.style.display = 'none';
-          gameMsg.innerText = data.resultText || 'Runden er ferdig!';
+          gameMsg.innerText = (data.resultText || 'Runden er ferdig!') + '\nNeste runde starter straks...';
         }
       }
     });

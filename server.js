@@ -17,6 +17,10 @@ let deck = [];
 let dealerHand = [];
 let gameStatus = 'WAITING'; // WAITING, BETTING, PLAYING, GAME_OVER
 let currentTurnIndex = 0;
+let nextHandTimer = null;
+
+// Hvor lenge resultatet vises før neste runde starter automatisk
+const NEXT_HAND_DELAY_MS = 8000;
 
 function createDeck() {
   const suits = ['♠', '♥', '♦', '♣'];
@@ -71,12 +75,16 @@ function finishDealerTurn() {
   }
 
   gameStatus = 'GAME_OVER';
+  scheduleNextHand();
 
   players.forEach(p => {
     if (p.chips === 0 && p.bet === 0) {
       p.resultText = 'SLÅTT UT';
       return;
     }
+
+    // Ble med midt i runden og har ikke satset
+    if (p.bet === 0) return;
 
     if (p.score > 21) {
       p.resultText = 'Bust (Tapt)';
@@ -131,6 +139,40 @@ function dealCards() {
 function allActiveHaveBet() {
   const activePlayers = players.filter(p => p.chips > 0 || p.bet > 0);
   return activePlayers.length > 0 && activePlayers.every(p => p.hasBet);
+}
+
+function startNewHand() {
+  clearTimeout(nextHandTimer);
+  nextHandTimer = null;
+
+  deck = shuffle(createDeck());
+  dealerHand = [];
+  gameStatus = 'BETTING';
+
+  players.forEach(p => {
+    p.hand = [];
+    p.score = 0;
+    p.bet = 0;
+    p.hasBet = false;
+    p.resultText = '';
+  });
+
+  // Finn første aktive spiller
+  currentTurnIndex = players.findIndex(p => p.chips > 0);
+  if (currentTurnIndex === -1) currentTurnIndex = 0;
+
+  broadcastState();
+}
+
+// Start ny runde automatisk så lenge noen fortsatt har penger
+function scheduleNextHand() {
+  clearTimeout(nextHandTimer);
+  nextHandTimer = setTimeout(() => {
+    nextHandTimer = null;
+    if (gameStatus === 'GAME_OVER' && players.some(p => p.chips > 0)) {
+      startNewHand();
+    }
+  }, NEXT_HAND_DELAY_MS);
 }
 
 function nextTurn() {
@@ -200,30 +242,20 @@ io.on('connection', (socket) => {
       };
       players.push(player);
     }
+
+    // Første spiller ved bordet starter innsatsrunden automatisk
+    if (gameStatus === 'WAITING') {
+      startNewHand();
+      return;
+    }
     broadcastState();
   });
 
-  socket.on('start_new_hand', () => {
-    deck = shuffle(createDeck());
-    dealerHand = [];
-    gameStatus = 'BETTING';
-
-    players.forEach(p => {
-      p.hand = [];
-      p.score = 0;
-      p.bet = 0;
-      p.hasBet = false;
-      p.resultText = '';
-    });
-
-    // Finn første aktive spiller
-    currentTurnIndex = players.findIndex(p => p.chips > 0);
-    if (currentTurnIndex === -1) currentTurnIndex = 0;
-
-    broadcastState();
-  });
+  socket.on('start_new_hand', startNewHand);
 
   socket.on('reset_game', () => {
+    clearTimeout(nextHandTimer);
+    nextHandTimer = null;
     players = [];
     dealerHand = [];
     gameStatus = 'WAITING';
@@ -277,6 +309,16 @@ io.on('connection', (socket) => {
     const index = players.findIndex(p => p.id === socket.id);
     if (index === -1) return;
     players.splice(index, 1);
+
+    // Tomt bord – gå tilbake til venting
+    if (players.length === 0) {
+      clearTimeout(nextHandTimer);
+      nextHandTimer = null;
+      dealerHand = [];
+      gameStatus = 'WAITING';
+      broadcastState();
+      return;
+    }
 
     if (gameStatus === 'PLAYING') {
       // Hold turen på riktig spiller når listen forskyves

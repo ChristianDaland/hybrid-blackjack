@@ -4,8 +4,24 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Blackjack Bord - Løland Gård</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
   <script src="/socket.io/socket.io.js"></script>
   <style>
+    :root {
+      --felt-light: #1f7f4e;
+      --felt: #13603a;
+      --felt-dark: #073520;
+      --gold: #d4af37;
+      --gold-light: #f3d77a;
+      --ink: #f5f1e6;
+      --ink-dim: rgba(245, 241, 230, 0.65);
+      --card-red: #c8102e;
+      --win: #2fbf71;
+      --lose: #e0474c;
+      --noise: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .09 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
       height: 100%;
@@ -13,171 +29,347 @@
       overflow: hidden;
     }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background-color: #059669;
-      color: white;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(ellipse at 50% 0%, #2a1a10 0%, #120b07 70%);
+      color: var(--ink);
       display: flex;
       flex-direction: column;
     }
+
+    /* TOPPLINJE */
     header {
-      background-color: #064e3b;
-      padding: 10px 20px;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 20px;
+      padding: 10px 24px;
       flex-shrink: 0;
     }
+    .brand h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.5rem;
+      letter-spacing: 0.22em;
+      color: var(--gold);
+    }
+    .brand p {
+      font-size: 0.7rem;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+    }
+    .header-right { display: flex; align-items: center; gap: 22px; }
+    .controls { display: flex; gap: 8px; }
+    .btn {
+      padding: 8px 16px;
+      border-radius: 999px;
+      border: 1px solid rgba(212, 175, 55, 0.55);
+      background: rgba(212, 175, 55, 0.08);
+      color: var(--gold-light);
+      font: 600 0.8rem 'Inter', sans-serif;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: rgba(212, 175, 55, 0.2); }
+    .btn-muted { border-color: rgba(245, 241, 230, 0.25); background: transparent; color: var(--ink-dim); }
     .qr-box {
-      background: white;
-      color: #064e3b;
-      padding: 6px 10px;
-      border-radius: 8px;
-      font-size: 0.8rem;
-      font-weight: bold;
-      text-align: center;
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
+      text-align: right;
+      font-size: 0.7rem;
+      color: var(--ink-dim);
+    }
+    .qr-box strong {
+      display: block;
+      color: var(--gold-light);
+      font-size: 0.75rem;
+      letter-spacing: 0.15em;
     }
     .qr-box img {
-      width: 48px;
-      height: 48px;
+      width: 58px;
+      height: 58px;
+      background: white;
+      padding: 4px;
+      border-radius: 6px;
     }
-    main {
+
+    /* BORDET */
+    .table-wrap { flex: 1; min-height: 0; padding: 0 14px 14px; display: flex; }
+    .rail {
       flex: 1;
       display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: space-between;
-      padding: 15px;
-      overflow: hidden;
+      padding: 0 16px 16px;
+      border-radius: 0 0 50% 50% / 0 0 34% 34%;
+      background: linear-gradient(180deg, #5b3521 0%, #3a2113 60%, #24130a 100%);
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.7), inset 0 -2px 0 rgba(255, 255, 255, 0.08);
     }
-    .dealer-area { text-align: center; font-size: 1.3rem; font-weight: bold; }
-    .players-area { 
-      display: flex; 
-      gap: 15px; 
-      justify-content: center; 
-      align-items: center;
-      flex-wrap: wrap; 
-      width: 100%; 
+    .table {
       flex: 1;
-    }
-    .player-card {
-      background-color: #065f46;
-      border: 2px solid #34d399;
-      border-radius: 12px;
-      padding: 12px;
-      width: 200px;
-      text-align: center;
       position: relative;
-      overflow: hidden;
-    }
-    .player-card.eliminated {
-      border-color: #ef4444;
-      opacity: 0.75;
-    }
-    .eliminated-cross {
-      position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0, 0, 0, 0.65);
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      color: #ef4444;
-      font-size: 4rem;
-      font-weight: 900;
-      z-index: 10;
-      line-height: 1;
+      padding: 16px 20px 24px;
+      border-radius: 0 0 50% 50% / 0 0 32% 32%;
+      background:
+        var(--noise),
+        radial-gradient(ellipse at 50% 15%, var(--felt-light) 0%, var(--felt) 45%, var(--felt-dark) 100%);
+      box-shadow: inset 0 0 0 2px rgba(212, 175, 55, 0.5), inset 0 0 90px rgba(0, 0, 0, 0.55);
+      overflow: hidden;
     }
-    .eliminated-text {
-      font-size: 1rem;
-      color: #ef4444;
-      font-weight: bold;
-      margin-top: 4px;
-      letter-spacing: 1px;
+
+    /* BANKEN */
+    .dealer-area { text-align: center; }
+    .area-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--gold-light);
+      margin-bottom: 8px;
     }
-    .active-turn { border-color: #facc15; box-shadow: 0 0 15px #facc15; }
-    .player-chips {
-      color: #34d399;
-      font-weight: bold;
-      font-size: 0.9rem;
-      margin-top: 2px;
-      margin-bottom: 6px;
-    }
-    .status-badge {
-      display: inline-block;
-      background: #facc15;
-      color: black;
-      padding: 3px 6px;
-      border-radius: 6px;
-      font-size: 0.8rem;
-      font-weight: bold;
-    }
-    .result-badge {
-      background: #ef4444;
-      color: white;
-      font-size: 0.9rem;
-      padding: 4px 8px;
-      border-radius: 6px;
-      margin-top: 6px;
-      font-weight: bold;
-    }
-    .win-badge { background: #10b981; }
-    .controls-bar {
-      display: flex;
-      gap: 15px;
-      margin-top: 5px;
-      flex-shrink: 0;
-    }
-    button {
-      padding: 10px 20px;
+    .dealer-area .cards { --cw: 66px; min-height: calc(66px * 1.4); }
+    .card-spot {
+      width: 66px;
+      height: calc(66px * 1.4);
+      border: 2px dashed rgba(212, 175, 55, 0.45);
       border-radius: 8px;
-      border: none;
-      font-size: 0.95rem;
-      font-weight: bold;
-      cursor: pointer;
     }
-    .btn-start { background-color: #2563eb; color: white; }
-    .btn-reset { background-color: #64748b; color: white; }
-    .cards { display: flex; gap: 6px; justify-content: center; margin-top: 8px; flex-wrap: wrap; }
-    .card-small {
-      background: white; color: black; width: 38px; height: 54px;
-      border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center;
-      font-weight: bold; font-size: 1rem;
+    .score {
+      display: inline-block;
+      min-width: 34px;
+      margin-top: 8px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(245, 241, 230, 0.15);
+      font-weight: 700;
+      font-size: 0.85rem;
     }
-    .red { color: #dc2626; }
+    .score.bust { background: rgba(224, 71, 76, 0.85); }
+    .score.hidden { visibility: hidden; }
+
+    /* TRYKK PÅ FILTEN */
+    .table-print { width: min(760px, 85%); margin-top: -4px; flex-shrink: 0; }
+    .table-print .title {
+      font-family: 'Playfair Display', serif;
+      font-weight: 800;
+      font-size: 44px;
+      letter-spacing: 10px;
+      fill: rgba(243, 215, 122, 0.85);
+    }
+    .table-print .rules {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 4px;
+      fill: rgba(245, 241, 230, 0.55);
+    }
+    .table-print .line { fill: none; stroke: rgba(212, 175, 55, 0.45); stroke-width: 1.5; }
+    .status-line {
+      margin-top: -6px;
+      font-size: 0.85rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+      min-height: 1.2em;
+    }
+    .status-line b { color: var(--gold-light); }
+
+    /* SPILLERPLASSER */
+    .players-area {
+      flex: 1;
+      width: 100%;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 18px;
+      justify-content: center;
+      align-items: flex-start;
+      padding-top: 18px;
+    }
+    .empty-table {
+      align-self: center;
+      font-family: 'Playfair Display', serif;
+      font-style: italic;
+      font-size: 1.3rem;
+      color: var(--ink-dim);
+    }
+    .seat {
+      position: relative;
+      width: 190px;
+      padding: 12px 12px 14px;
+      border-radius: 16px;
+      background: rgba(0, 0, 0, 0.22);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      text-align: center;
+      transition: box-shadow 0.3s, border-color 0.3s, transform 0.4s;
+    }
+    .seat.active {
+      border-color: var(--gold-light);
+      animation: glow 1.6s ease-in-out infinite;
+    }
+    @keyframes glow {
+      0%, 100% { box-shadow: 0 0 0 1px rgba(243, 215, 122, 0.5), 0 0 16px rgba(243, 215, 122, 0.3); }
+      50% { box-shadow: 0 0 0 2px rgba(243, 215, 122, 0.9), 0 0 32px rgba(243, 215, 122, 0.55); }
+    }
+    .seat-name {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.15rem;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .seat-chips { font-size: 0.78rem; color: var(--ink-dim); letter-spacing: 0.04em; }
+    .bet-spot {
+      width: 52px;
+      height: 52px;
+      margin: 10px auto 8px;
+      border-radius: 50%;
+      border: 2px dashed rgba(212, 175, 55, 0.45);
+      display: grid;
+      place-items: center;
+      font-size: 0.55rem;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+    }
+    .bet-spot.filled { border: none; }
+    .seat .cards { --cw: 48px; min-height: calc(48px * 1.4); }
+    .result {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .result.win { background: linear-gradient(180deg, var(--gold-light), var(--gold)); color: #2a1a05; }
+    .result.lose { background: rgba(224, 71, 76, 0.85); color: white; }
+    .result.push { background: rgba(245, 241, 230, 0.2); color: var(--ink); }
+    .seat.eliminated { border-color: rgba(224, 71, 76, 0.5); }
+    .seat.eliminated > :not(.stamp) { filter: grayscale(0.9); opacity: 0.5; }
+    .stamp {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(-14deg);
+      padding: 4px 12px;
+      border: 3px solid var(--lose);
+      border-radius: 6px;
+      color: var(--lose);
+      font-weight: 800;
+      font-size: 1.2rem;
+      letter-spacing: 0.15em;
+      background: rgba(0, 0, 0, 0.55);
+      white-space: nowrap;
+    }
+
+    /* KORT */
+    .cards { display: flex; justify-content: center; }
+    .cards .card + .card { margin-left: calc(var(--cw) * -0.38); }
+    .card {
+      position: relative;
+      flex-shrink: 0;
+      width: var(--cw);
+      height: calc(var(--cw) * 1.4);
+      border-radius: calc(var(--cw) * 0.1);
+      background: linear-gradient(160deg, #ffffff 0%, #f3efe4 100%);
+      border: 1px solid rgba(0, 0, 0, 0.18);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.25);
+      color: #1b1b1b;
+      font-family: 'Playfair Display', serif;
+      font-weight: 700;
+    }
+    .card.red { color: var(--card-red); }
+    .card .corner {
+      position: absolute;
+      font-size: calc(var(--cw) * 0.25);
+      line-height: 0.95;
+      text-align: center;
+    }
+    .card .tl { top: calc(var(--cw) * 0.06); left: calc(var(--cw) * 0.08); }
+    .card .br { bottom: calc(var(--cw) * 0.06); right: calc(var(--cw) * 0.08); transform: rotate(180deg); }
+    .card .pip {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      font-size: calc(var(--cw) * 0.55);
+    }
+    .card.deal { animation: deal 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+    @keyframes deal {
+      from { transform: translate(0, -80px) rotate(-14deg); opacity: 0; }
+    }
+
+    /* SJETONGER */
+    .chip {
+      --c: #1f5fbf;
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle, var(--c) 0 50%, rgba(255, 255, 255, 0.85) 51% 54%, transparent 55%),
+        repeating-conic-gradient(var(--c) 0 20deg, #f5f1e6 20deg 40deg);
+      box-shadow: 0 3px 6px rgba(0, 0, 0, 0.55), inset 0 0 0 2px rgba(0, 0, 0, 0.2);
+      color: white;
+      font-weight: 800;
+      font-size: 0.78rem;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+    }
+    .chip-25 { --c: #1e8a4c; }
+    .chip-50 { --c: #c62828; }
+    .chip-100 { --c: #1c1c1c; }
+    .chip-500 { --c: #6a2c91; }
   </style>
 </head>
 <body>
 
   <header>
-    <div>
-      <h1 style="font-size: 1.5rem;">BLACKJACK</h1>
-      <p style="opacity: 0.8; font-size: 0.85rem;">Bordskjerm (Banken)</p>
+    <div class="brand">
+      <h1>BLACKJACK</h1>
+      <p>Løland Gård · Bordet</p>
     </div>
-    <div class="qr-box">
-      <div>
-        SKANN FOR Å BLI MED:<br>
-        <span style="font-size: 0.7rem; font-weight: normal;">hybrid-blackjack.onrender.com/mobile</span>
+    <div class="header-right">
+      <div class="controls">
+        <button class="btn" onclick="startNewHand()">Ny hånd</button>
+        <button class="btn btn-muted" onclick="resetGame()">Nullstill bord</button>
       </div>
-      <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://hybrid-blackjack.onrender.com/mobile" alt="QR-kode">
+      <div class="qr-box">
+        <div>
+          <strong>SKANN FOR Å SPILLE</strong>
+          hybrid-blackjack.onrender.com/mobile
+        </div>
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://hybrid-blackjack.onrender.com/mobile" alt="QR-kode">
+      </div>
     </div>
   </header>
 
-  <main>
-    <div class="dealer-area">
-      <h2 style="font-size: 1.3rem;">BANKEN (DEALER) — POENG: <span id="dealer-score">0</span></h2>
-      <div id="dealer-cards" class="cards"></div>
-    </div>
+  <div class="table-wrap">
+    <div class="rail">
+      <main class="table">
+        <div class="dealer-area">
+          <div class="area-label">Banken</div>
+          <div id="dealer-cards" class="cards"><div class="card-spot"></div></div>
+          <span id="dealer-score" class="score hidden">0</span>
+        </div>
 
-    <div id="players-list" class="players-area"></div>
+        <svg class="table-print" viewBox="0 0 800 150" aria-hidden="true">
+          <path id="arc-title" d="M 70 30 Q 400 150 730 30" fill="none"/>
+          <path id="arc-rules" d="M 110 62 Q 400 175 690 62" fill="none"/>
+          <path class="line" d="M 40 8 Q 400 90 760 8"/>
+          <text class="title"><textPath href="#arc-title" startOffset="50%" text-anchor="middle">BLACKJACK</textPath></text>
+          <text class="rules"><textPath href="#arc-rules" startOffset="50%" text-anchor="middle">BANKEN TREKKER TIL 16 · STÅR PÅ 17</textPath></text>
+        </svg>
+        <div id="status-line" class="status-line"></div>
 
-    <div class="controls-bar">
-      <button class="btn-start" onclick="startNewHand()">Start Ny Hånd</button>
-      <button class="btn-reset" onclick="resetGame()">Nullstill Bord</button>
+        <div id="players-list" class="players-area"></div>
+      </main>
     </div>
-  </main>
+  </div>
 
   <script>
     const socket = io();
@@ -190,64 +382,112 @@
       socket.emit('reset_game');
     }
 
+    function escapeHtml(text) {
+      return String(text).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    }
+
+    function cardHTML(c, isNew, delay) {
+      const isRed = c.suit === '♥' || c.suit === '♦';
+      return `<div class="card ${isRed ? 'red' : ''} ${isNew ? 'deal' : ''}" style="animation-delay: ${delay}ms">
+        <span class="corner tl">${c.value}<br>${c.suit}</span>
+        <span class="pip">${c.suit}</span>
+        <span class="corner br">${c.value}<br>${c.suit}</span>
+      </div>`;
+    }
+
+    // Husker hvor mange kort som er vist, slik at bare nye kort animeres inn
+    const shownCards = {};
+    function cardsHTML(key, hand) {
+      hand = hand || [];
+      const prev = shownCards[key] || 0;
+      shownCards[key] = hand.length;
+      return hand.map((c, i) => cardHTML(c, i >= prev, Math.max(0, i - prev) * 120)).join('');
+    }
+
+    function chipClass(amount) {
+      if (amount >= 500) return 'chip-500';
+      if (amount >= 100) return 'chip-100';
+      if (amount >= 50) return 'chip-50';
+      if (amount >= 25) return 'chip-25';
+      return '';
+    }
+
+    function resultClass(text) {
+      if (/VANT/i.test(text)) return 'win';
+      if (/Uavgjort/i.test(text)) return 'push';
+      return 'lose';
+    }
+
+    function statusText(data) {
+      const active = data.players.filter(p => !p.isEliminated);
+      if (data.gameStatus === 'WAITING' || data.players.length === 0) return 'Venter på spillere';
+      if (data.gameStatus === 'BETTING') {
+        const waiting = active.filter(p => !p.hasBet).length;
+        return waiting > 0 ? `Plasser innsatsene · venter på <b>${waiting}</b>` : 'Deler ut kort';
+      }
+      if (data.gameStatus === 'PLAYING') {
+        const current = data.players.find(p => p.isCurrentTurn);
+        return current ? `<b>${escapeHtml(current.name)}</b> sin tur` : 'Banken spiller';
+      }
+      return 'Runden er over · ny runde starter straks';
+    }
+
     socket.on('game_state', (data) => {
-      document.getElementById('dealer-score').innerText = data.dealerScore || 0;
+      const dealerScore = document.getElementById('dealer-score');
+      dealerScore.innerText = data.dealerScore || 0;
+      dealerScore.classList.toggle('hidden', !data.dealerScore);
+      dealerScore.classList.toggle('bust', data.dealerScore > 21);
 
       const dealerCards = document.getElementById('dealer-cards');
-      dealerCards.innerHTML = '';
-      if (data.dealerHand) {
-        data.dealerHand.forEach(card => {
-          const isRed = card.suit === '♥' || card.suit === '♦';
-          const div = document.createElement('div');
-          div.className = `card-small ${isRed ? 'red' : ''}`;
-          div.innerText = `${card.value}${card.suit}`;
-          dealerCards.appendChild(div);
-        });
-      }
+      dealerCards.innerHTML = data.dealerHand && data.dealerHand.length > 0
+        ? cardsHTML('dealer', data.dealerHand)
+        : (shownCards.dealer = 0, '<div class="card-spot"></div>');
+
+      document.getElementById('status-line').innerHTML = statusText(data);
 
       const playersList = document.getElementById('players-list');
       playersList.innerHTML = '';
 
-      data.players.forEach(p => {
-        const card = document.createElement('div');
-        card.className = `player-card ${p.isCurrentTurn ? 'active-turn' : ''} ${p.isEliminated ? 'eliminated' : ''}`;
-        
-        let statusText = p.hasBet ? `Bud: ${p.bet} kr` : 'Venter på bud...';
+      if (data.players.length === 0) {
+        playersList.innerHTML = '<p class="empty-table">Skann QR-koden for å ta plass ved bordet</p>';
+        return;
+      }
 
-        let resultHTML = '';
-        if (p.resultText && !p.isEliminated) {
-          const isWin = p.resultText.includes('Vant');
-          resultHTML = `<div class="result-badge ${isWin ? 'win-badge' : ''}">${p.resultText}</div>`;
+      // Plasser setene i en bue langs bordkanten (slakere bue med få spillere)
+      const n = data.players.length;
+      const half = (n - 1) / 2 || 1;
+      const curve = Math.min(1, (n - 1) / 4);
+
+      data.players.forEach((p, index) => {
+        const seat = document.createElement('div');
+        seat.className = `seat ${p.isCurrentTurn ? 'active' : ''} ${p.isEliminated ? 'eliminated' : ''}`;
+        if (n > 1 && n <= 6) {
+          const t = (index - (n - 1) / 2) / half;
+          seat.style.transform = `translateY(${(1 - t * t) * 34 * curve}px) rotate(${-t * 6 * curve}deg)`;
         }
 
-        let cardsHTML = '';
-        if (p.hand && p.hand.length > 0) {
-          cardsHTML = p.hand.map(c => {
-            const isRed = c.suit === '♥' || c.suit === '♦';
-            return `<div class="card-small ${isRed ? 'red' : ''}">${c.value}${c.suit}</div>`;
-          }).join('');
-        }
+        const betHTML = p.hasBet && p.bet > 0
+          ? `<div class="bet-spot filled"><div class="chip ${chipClass(p.bet)}">${p.bet}</div></div>`
+          : `<div class="bet-spot">${p.isEliminated ? '' : 'Innsats'}</div>`;
 
-        let crossHTML = '';
-        if (p.isEliminated) {
-          crossHTML = `
-            <div class="eliminated-cross">
-              ✕
-              <div class="eliminated-text">SLÅTT UT</div>
-            </div>
-          `;
-        }
+        const scoreHTML = p.hand && p.hand.length > 0
+          ? `<span class="score ${p.score > 21 ? 'bust' : ''}">${p.score}</span>`
+          : '';
 
-        card.innerHTML = `
-          ${crossHTML}
-          <h3>${p.name}</h3>
-          <div class="player-chips">Saldo: ${p.chips} kr</div>
-          <div class="status-badge">${statusText}</div>
-          <div class="cards">${cardsHTML}</div>
-          <p style="margin-top: 6px; font-size: 0.9rem;">Poeng: ${p.score}</p>
+        const resultHTML = p.resultText && !p.isEliminated
+          ? `<div><span class="result ${resultClass(p.resultText)}">${escapeHtml(p.resultText)}</span></div>`
+          : '';
+
+        seat.innerHTML = `
+          <div class="seat-name">${escapeHtml(p.name)}</div>
+          <div class="seat-chips">${p.chips} kr</div>
+          ${betHTML}
+          <div class="cards">${cardsHTML('p-' + p.id, p.hand)}</div>
+          ${scoreHTML}
           ${resultHTML}
+          ${p.isEliminated ? '<div class="stamp">SLÅTT UT</div>' : ''}
         `;
-        playersList.appendChild(card);
+        playersList.appendChild(seat);
       });
     });
   </script>
